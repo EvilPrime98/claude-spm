@@ -1,7 +1,7 @@
 {
   "name": "claude-spm",
-  "version": "0.1.0",
-  "description": "Skill package manager: install skills from your global ~/.claude/skills into a project's .claude/skills",
+  "version": "0.2.0",
+  "description": "Skill package manager: install skills from a GitHub repo into a project's .claude/skills",
   "keywords": [
     "claude",
     "claude-code",
