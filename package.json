@@ -1,0 +1,46 @@
+{
+  "name": "claude-spm",
+  "version": "0.1.0",
+  "description": "Skill package manager: install skills from your global ~/.claude/skills into a project's .claude/skills",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "skills",
+    "package-manager",
+    "cli"
+  ],
+  "author": "Amin Pérez <joseamin1998@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "spm": "bin/spm.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EvilPrime98/claude-spm.git"
+  },
+  "homepage": "https://github.com/EvilPrime98/claude-spm#readme",
+  "bugs": {
+    "url": "https://github.com/EvilPrime98/claude-spm/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "pnpm format:check && pnpm test"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "vitest": "^3.2.4"
+  }
+}
