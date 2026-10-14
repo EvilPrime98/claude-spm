@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { globalSkillsDir, projectPaths } from "./paths.js";
+import { fetchRepo, repoSpec } from "./repo.js";
 import {
   listSkills,
   describe,
@@ -13,17 +14,17 @@ import {
   removeOverrides,
 } from "./store.js";
 
-const HELP = `spm - install Claude skills from your global ~/.claude/skills into a project
+const HELP = `spm - install Claude skills from a GitHub repo into a project
 
 Usage:
-  spm init                      set up .claude/skills and hide all global skills in this
-                                project (only project-level skills stay available)
+  spm init [owner/repo[#ref]]   set up .claude/skills, record the skills repo, and hide
+                                global skills in this project (only project skills stay)
   spm install <skill...>        copy skills into ./.claude/skills (alias: i, add)
   spm install                   install every skill listed in .claude/skills.json
   spm uninstall <skill...>      remove skills from the project (alias: rm, remove)
-  spm update [skill...]         re-copy installed skills from the global folder
+  spm update [skill...]         re-copy installed skills from the repo
   spm list                      skills installed in this project (alias: ls)
-  spm available [filter]        skills available globally (alias: search)
+  spm available [filter]        skills available in the repo (alias: search)
 
 Options:
   -f, --force    overwrite a skill that already exists locally
@@ -31,12 +32,15 @@ Options:
   -h, --help     show this help
 
 Env:
-  SPM_GLOBAL_DIR   override the global skills folder (default: ~/.claude/skills)
+  SPM_REPO         skills repo (owner/repo[#ref], git URL or path); overrides skills.json
+  SPM_CACHE_DIR    where repos are cloned (default: ~/.cache/spm)
+  SPM_GLOBAL_DIR   global skills folder hidden by isolation (default: ~/.claude/skills)
 `;
 
-async function init(p, { isolate } = {}) {
+async function init(p, { isolate, repo } = {}) {
   await fs.mkdir(p.skillsDir, { recursive: true });
   const manifest = await readManifest(p.manifest);
+  if (repo) manifest.repo = repo;
   if (isolate !== undefined) manifest.isolate = isolate;
   await writeManifest(p.manifest, manifest);
   if (isolate === false) await removeOverrides(p.settings, globalSkillsDir());
@@ -54,19 +58,20 @@ async function sync(p, manifest) {
 
 async function install(names, { force }) {
   const p = projectPaths();
-  const globalDir = globalSkillsDir();
   const manifest = await readManifest(p.manifest);
   const targets = names.length ? names : Object.keys(manifest.skills);
   if (!targets.length) return console.log("Nothing to install. Usage: spm install <skill>");
 
-  const available = await listSkills(globalDir);
+  const spec = repoSpec(manifest);
+  const sourceDir = await fetchRepo(spec);
+  const available = await listSkills(sourceDir);
   await init(p);
 
   for (const name of targets) {
-    const src = path.join(globalDir, name);
+    const src = path.join(sourceDir, name);
     const dest = path.join(p.skillsDir, name);
     if (!available.includes(name)) {
-      console.error(`✗ ${name}: not found in ${globalDir}${suggest(name, available)}`);
+      console.error(`✗ ${name}: not found in ${spec}${suggest(name, available)}`);
       process.exitCode = 1;
       continue;
     }
@@ -104,11 +109,12 @@ async function uninstall(names) {
 
 async function update(names) {
   const p = projectPaths();
-  const globalDir = globalSkillsDir();
   const manifest = await readManifest(p.manifest);
   const targets = names.length ? names : Object.keys(manifest.skills);
+  if (!targets.length) return console.log("No skills installed in this project.");
+  const sourceDir = await fetchRepo(repoSpec(manifest));
   for (const name of targets) {
-    const src = path.join(globalDir, name);
+    const src = path.join(sourceDir, name);
     const dest = path.join(p.skillsDir, name);
     if (!manifest.skills[name]) {
       console.error(`✗ ${name}: not installed`);
@@ -116,7 +122,7 @@ async function update(names) {
       continue;
     }
     if (!(await exists(src))) {
-      console.error(`✗ ${name}: no longer in the global folder`);
+      console.error(`✗ ${name}: no longer in the repo`);
       process.exitCode = 1;
       continue;
     }
@@ -152,10 +158,12 @@ async function list() {
 }
 
 async function available(filter) {
-  const dir = globalSkillsDir();
+  const p = projectPaths();
+  const spec = repoSpec(await readManifest(p.manifest));
+  const dir = await fetchRepo(spec);
   const all = (await listSkills(dir)).filter((n) => !filter || n.includes(filter.toLowerCase()));
   if (!all.length) {
-    return console.log(`No skills found in ${dir}${filter ? ` matching "${filter}"` : ""}.`);
+    return console.log(`No skills found in ${spec}${filter ? ` matching "${filter}"` : ""}.`);
   }
   const width = Math.max(...all.map((n) => n.length));
   for (const name of all) {
@@ -179,7 +187,12 @@ export async function run(argv) {
   switch (cmd) {
     case "init": {
       const isolate = !flags.has("--no-isolate");
-      await init(projectPaths(), { isolate });
+      const p = projectPaths();
+      await init(p, { isolate, repo: rest[0] });
+      const { repo } = await readManifest(p.manifest);
+      if (!repo && !process.env.SPM_REPO) {
+        console.log("Tip: set the skills repo with `spm init <owner/repo>`");
+      }
       return console.log(
         isolate
           ? "Initialized .claude/skills; global skills are hidden for this project (.claude/settings.json)"

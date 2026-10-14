@@ -4,6 +4,8 @@ import path from "node:path";
 export const globalSkillsDir = () =>
   process.env.SPM_GLOBAL_DIR ?? path.join(os.homedir(), ".claude", "skills");
 
+export const cacheDir = () => process.env.SPM_CACHE_DIR ?? path.join(os.homedir(), ".cache", "spm");
+
 export const projectPaths = (cwd = process.cwd()) => {
   const claudeDir = path.join(cwd, ".claude");
   return {
