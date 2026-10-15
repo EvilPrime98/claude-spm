@@ -11,7 +11,8 @@ export const projectPaths = (cwd = process.cwd()) => {
   return {
     claudeDir,
     skillsDir: path.join(claudeDir, "skills"),
-    manifest: path.join(claudeDir, "skills.json"),
+    manifest: path.join(cwd, "spm.json"),
+    state: path.join(claudeDir, ".spm-state.json"),
     settings: path.join(claudeDir, "settings.json"),
   };
 };

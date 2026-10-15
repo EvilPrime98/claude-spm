@@ -2,7 +2,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { hashDir, listSkills, readManifest, writeManifest } from "../src/store.js";
+import {
+  hashDir,
+  listSkills,
+  readManifest,
+  readState,
+  writeManifest,
+  writeState,
+} from "../src/store.js";
 
 let tmp;
 beforeEach(async () => {
@@ -31,11 +38,17 @@ describe("store", () => {
     expect(await hashDir(path.join(tmp, "a"))).not.toBe(before);
   });
 
-  it("returns an empty manifest when the file is missing and round-trips", async () => {
-    const file = path.join(tmp, ".claude", "skills.json");
-    expect(await readManifest(file)).toEqual({ skills: {} });
-    await writeManifest(file, { skills: { b: { hash: "2" }, a: { hash: "1" } } });
-    const read = await readManifest(file);
-    expect(Object.keys(read.skills)).toEqual(["a", "b"]);
+  it("returns an empty manifest when the file is missing and round-trips sorted", async () => {
+    const file = path.join(tmp, "spm.json");
+    expect(await readManifest(file)).toEqual({ skills: [] });
+    await writeManifest(file, { repo: "o/r", skills: ["b", "a", "b"] });
+    expect(await readManifest(file)).toEqual({ repo: "o/r", skills: ["a", "b"] });
+  });
+
+  it("round-trips the install state", async () => {
+    const file = path.join(tmp, ".claude", ".spm-state.json");
+    expect(await readState(file)).toEqual({ skills: {} });
+    await writeState(file, { skills: { b: { hash: "2" }, a: { hash: "1" } } });
+    expect(Object.keys((await readState(file)).skills)).toEqual(["a", "b"]);
   });
 });

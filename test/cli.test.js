@@ -66,6 +66,24 @@ describe("spm cli", () => {
     expect((await spm("list")).stdout).toContain("No skills installed");
   });
 
+  it("records skills in spm.json at the project root and hashes inside .claude", async () => {
+    await spm("init", repoDir);
+    await spm("install", "demo");
+    const manifest = JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
+    expect(manifest).toMatchObject({ repo: repoDir, skills: ["demo"] });
+    await fs.access(path.join(project, ".claude", ".spm-state.json"));
+    await expect(fs.access(path.join(project, ".claude", "skills.json"))).rejects.toThrow();
+  });
+
+  it("recreates .claude/skills from spm.json after .claude is deleted", async () => {
+    await spm("init", repoDir);
+    await spm("install", "demo");
+    await fs.rm(path.join(project, ".claude"), { recursive: true });
+    await spm("install");
+    await fs.access(path.join(project, ".claude", "skills", "demo", "SKILL.md"));
+    expect((await spm("list")).stdout).not.toContain("untracked");
+  });
+
   it("hides non-installed global skills via settings.json", async () => {
     await spm("init", repoDir);
     const settings = JSON.parse(
