@@ -5,6 +5,8 @@
 
 Skill package manager: install skills from a GitHub repo into a project's `.claude/skills`, and optionally hide your global `~/.claude/skills` in that project.
 
+It works like npm: `spm.json` (project root, committed) is your `package.json`, and `.claude/` is your `node_modules` (generated, git-ignorable). Delete `.claude/` and run `spm install` to recreate it.
+
 The repo can keep skills under a `skills/` folder (`skills/<name>/SKILL.md`) or at its root (`<name>/SKILL.md`). `git` must be installed; private repos work through your normal git credentials.
 
 ## Install
@@ -27,19 +29,29 @@ spm list                 # show skills installed in this project
 
 ## Commands
 
-| Command                  | Description                                                  |
-| ------------------------ | ------------------------------------------------------------ |
-| `spm init [owner/repo]`  | Create `.claude/skills`, record the repo, hide global skills |
-| `spm install <skill...>` | Copy skills into the project (aliases: `i`, `add`)           |
-| `spm install`            | Install every skill listed in `.claude/skills.json`          |
-| `spm uninstall <skill>`  | Remove skills from the project (aliases: `rm`, `remove`)     |
-| `spm update [skill...]`  | Re-copy installed skills from the repo                       |
-| `spm list`               | Skills installed in this project (alias: `ls`)               |
-| `spm available [filter]` | Skills available in the repo (alias: `search`)               |
+| Command                  | Description                                                     |
+| ------------------------ | --------------------------------------------------------------- |
+| `spm init [owner/repo]`  | Create `spm.json` and `.claude/skills`, hide global skills      |
+| `spm install <skill...>` | Add skills to `spm.json` and copy them in (aliases: `i`, `add`) |
+| `spm install`            | Recreate `.claude/skills` from `spm.json`                       |
+| `spm uninstall <skill>`  | Remove skills from the project (aliases: `rm`, `remove`)        |
+| `spm update [skill...]`  | Re-copy installed skills from the repo                          |
+| `spm list`               | Skills installed in this project (alias: `ls`)                  |
+| `spm available [filter]` | Skills available in the repo (alias: `search`)                  |
 
 Options: `-f, --force` overwrite an existing local skill; `--no-isolate` with `init` keeps global skills visible; `-h, --help`.
 
-The repo is stored in `.claude/skills.json` so `spm install` works for anyone who clones the project.
+`spm.json` looks like this:
+
+```json
+{
+  "repo": "owner/repo",
+  "isolate": true,
+  "skills": ["graphify", "testing-doctor"]
+}
+```
+
+Commit it and add `.claude/` to `.gitignore`; anyone who clones the project runs `spm install`. File hashes used to detect local edits live in `.claude/.spm-state.json`. With isolation on, `spm install` also rewrites `skillOverrides` in `.claude/settings.json`, so that file is regenerated too.
 
 Environment:
 

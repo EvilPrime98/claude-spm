@@ -9,6 +9,8 @@ import {
   copySkill,
   readManifest,
   writeManifest,
+  readState,
+  writeState,
   exists,
   syncOverrides,
   removeOverrides,
@@ -17,10 +19,11 @@ import {
 const HELP = `spm - install Claude skills from a GitHub repo into a project
 
 Usage:
-  spm init [owner/repo[#ref]]   set up .claude/skills, record the skills repo, and hide
-                                global skills in this project (only project skills stay)
-  spm install <skill...>        copy skills into ./.claude/skills (alias: i, add)
-  spm install                   install every skill listed in .claude/skills.json
+  spm init [owner/repo[#ref]]   create spm.json, record the skills repo, and hide global
+                                skills in this project (only project skills stay)
+  spm install <skill...>        add skills to spm.json and copy them into ./.claude/skills
+                                (alias: i, add)
+  spm install                   recreate .claude/skills from spm.json (like npm install)
   spm uninstall <skill...>      remove skills from the project (alias: rm, remove)
   spm update [skill...]         re-copy installed skills from the repo
   spm list                      skills installed in this project (alias: ls)
@@ -32,22 +35,18 @@ Options:
   -h, --help     show this help
 
 Env:
-  SPM_REPO         skills repo (owner/repo[#ref], git URL or path); overrides skills.json
+  SPM_REPO         skills repo (owner/repo[#ref], git URL or path); overrides spm.json
   SPM_CACHE_DIR    where repos are cloned (default: ~/.cache/spm)
   SPM_GLOBAL_DIR   global skills folder hidden by isolation (default: ~/.claude/skills)
 `;
 
-async function init(p, { isolate, repo } = {}) {
-  await fs.mkdir(p.skillsDir, { recursive: true });
-  const manifest = await readManifest(p.manifest);
-  if (repo) manifest.repo = repo;
-  if (isolate !== undefined) manifest.isolate = isolate;
-  await writeManifest(p.manifest, manifest);
-  if (isolate === false) await removeOverrides(p.settings, globalSkillsDir());
-  else if (manifest.isolate) await sync(p, manifest);
+async function load(p) {
+  return { manifest: await readManifest(p.manifest), state: await readState(p.state) };
 }
 
-async function sync(p, manifest) {
+async function save(p, { manifest, state }) {
+  await writeManifest(p.manifest, manifest);
+  await writeState(p.state, state);
   if (!manifest.isolate) return;
   await syncOverrides({
     settingsFile: p.settings,
@@ -56,16 +55,27 @@ async function sync(p, manifest) {
   });
 }
 
+async function init(p, { isolate, repo } = {}) {
+  await fs.mkdir(p.skillsDir, { recursive: true });
+  const cfg = await load(p);
+  if (repo) cfg.manifest.repo = repo;
+  if (isolate !== undefined) cfg.manifest.isolate = isolate;
+  await save(p, cfg);
+  if (isolate === false) await removeOverrides(p.settings, globalSkillsDir());
+  return cfg.manifest;
+}
+
 async function install(names, { force }) {
   const p = projectPaths();
-  const manifest = await readManifest(p.manifest);
-  const targets = names.length ? names : Object.keys(manifest.skills);
+  const cfg = await load(p);
+  const { manifest, state } = cfg;
+  const targets = names.length ? names : [...manifest.skills];
   if (!targets.length) return console.log("Nothing to install. Usage: spm install <skill>");
 
   const spec = repoSpec(manifest);
   const sourceDir = await fetchRepo(spec);
   const available = await listSkills(sourceDir);
-  await init(p);
+  await fs.mkdir(p.skillsDir, { recursive: true });
 
   for (const name of targets) {
     const src = path.join(sourceDir, name);
@@ -75,48 +85,50 @@ async function install(names, { force }) {
       process.exitCode = 1;
       continue;
     }
+    if (!manifest.skills.includes(name)) manifest.skills.push(name);
     if ((await exists(dest)) && !force) {
       console.log(`• ${name}: already installed (use --force to overwrite)`);
-      manifest.skills[name] ??= { hash: await hashDir(dest) };
+      state.skills[name] ??= { hash: await hashDir(dest) };
       continue;
     }
     await copySkill(src, dest);
-    manifest.skills[name] = { hash: await hashDir(dest) };
+    state.skills[name] = { hash: await hashDir(dest) };
     console.log(`✓ ${name}`);
   }
-  await writeManifest(p.manifest, manifest);
-  await sync(p, manifest);
+  await save(p, cfg);
 }
 
 async function uninstall(names) {
   if (!names.length) throw new Error("usage: spm uninstall <skill...>");
   const p = projectPaths();
-  const manifest = await readManifest(p.manifest);
+  const cfg = await load(p);
+  const { manifest, state } = cfg;
   for (const name of names) {
     const dest = path.join(p.skillsDir, name);
-    if (!(await exists(dest)) && !manifest.skills[name]) {
+    if (!(await exists(dest)) && !manifest.skills.includes(name)) {
       console.error(`✗ ${name}: not installed`);
       process.exitCode = 1;
       continue;
     }
     await fs.rm(dest, { recursive: true, force: true });
-    delete manifest.skills[name];
+    manifest.skills = manifest.skills.filter((n) => n !== name);
+    delete state.skills[name];
     console.log(`✓ removed ${name}`);
   }
-  await writeManifest(p.manifest, manifest);
-  await sync(p, manifest);
+  await save(p, cfg);
 }
 
 async function update(names) {
   const p = projectPaths();
-  const manifest = await readManifest(p.manifest);
-  const targets = names.length ? names : Object.keys(manifest.skills);
+  const cfg = await load(p);
+  const { manifest, state } = cfg;
+  const targets = names.length ? names : manifest.skills;
   if (!targets.length) return console.log("No skills installed in this project.");
   const sourceDir = await fetchRepo(repoSpec(manifest));
   for (const name of targets) {
     const src = path.join(sourceDir, name);
     const dest = path.join(p.skillsDir, name);
-    if (!manifest.skills[name]) {
+    if (!manifest.skills.includes(name)) {
       console.error(`✗ ${name}: not installed`);
       process.exitCode = 1;
       continue;
@@ -126,28 +138,28 @@ async function update(names) {
       process.exitCode = 1;
       continue;
     }
-    const globalHash = await hashDir(src);
+    const repoHash = await hashDir(src);
     const localHash = (await exists(dest)) ? await hashDir(dest) : null;
-    if (globalHash === localHash) {
+    if (repoHash === localHash) {
+      state.skills[name] = { hash: repoHash };
       console.log(`• ${name}: up to date`);
       continue;
     }
-    const edited = localHash && localHash !== manifest.skills[name].hash;
+    const edited = localHash && localHash !== state.skills[name]?.hash;
     await copySkill(src, dest);
-    manifest.skills[name] = { hash: globalHash };
+    state.skills[name] = { hash: repoHash };
     console.log(`✓ ${name}: updated${edited ? " (local edits overwritten)" : ""}`);
   }
-  await writeManifest(p.manifest, manifest);
-  await sync(p, manifest);
+  await save(p, cfg);
 }
 
 async function list() {
   const p = projectPaths();
   const local = await listSkills(p.skillsDir);
   if (!local.length) return console.log("No skills installed in this project.");
-  const manifest = await readManifest(p.manifest);
+  const { state } = await load(p);
   for (const name of local) {
-    const tracked = manifest.skills[name];
+    const tracked = state.skills[name];
     const flag = !tracked
       ? " (untracked)"
       : tracked.hash !== (await hashDir(path.join(p.skillsDir, name)))
@@ -159,7 +171,7 @@ async function list() {
 
 async function available(filter) {
   const p = projectPaths();
-  const spec = repoSpec(await readManifest(p.manifest));
+  const spec = repoSpec((await load(p)).manifest);
   const dir = await fetchRepo(spec);
   const all = (await listSkills(dir)).filter((n) => !filter || n.includes(filter.toLowerCase()));
   if (!all.length) {
@@ -188,15 +200,14 @@ export async function run(argv) {
     case "init": {
       const isolate = !flags.has("--no-isolate");
       const p = projectPaths();
-      await init(p, { isolate, repo: rest[0] });
-      const { repo } = await readManifest(p.manifest);
+      const { repo } = await init(p, { isolate, repo: rest[0] });
       if (!repo && !process.env.SPM_REPO) {
         console.log("Tip: set the skills repo with `spm init <owner/repo>`");
       }
       return console.log(
         isolate
-          ? "Initialized .claude/skills; global skills are hidden for this project (.claude/settings.json)"
-          : "Initialized .claude/skills",
+          ? "Initialized spm.json and .claude/skills; global skills are hidden for this project (.claude/settings.json)"
+          : "Initialized spm.json and .claude/skills",
       );
     }
     case "install":

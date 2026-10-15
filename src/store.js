@@ -57,22 +57,37 @@ export async function copySkill(src, dest) {
   await fs.cp(src, dest, { recursive: true, dereference: true });
 }
 
-export async function readManifest(file) {
+async function readJson(file, fallback) {
   try {
     return JSON.parse(await fs.readFile(file, "utf8"));
   } catch (e) {
-    if (e.code === "ENOENT") return { skills: {} };
+    if (e.code === "ENOENT") return fallback;
     throw new Error(`could not parse ${file}: ${e.message}`);
   }
 }
 
-export async function writeManifest(file, manifest) {
-  const skills = Object.fromEntries(
-    Object.entries(manifest.skills).sort(([a], [b]) => a.localeCompare(b)),
-  );
+async function writeJson(file, data) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify({ ...manifest, skills }, null, 2) + "\n");
+  await fs.writeFile(file, JSON.stringify(data, null, 2) + "\n");
 }
+
+export async function readManifest(file) {
+  const m = await readJson(file, {});
+  return { ...m, skills: [...new Set(m.skills ?? [])].sort() };
+}
+
+export const writeManifest = (file, manifest) =>
+  writeJson(file, { ...manifest, skills: [...new Set(manifest.skills)].sort() });
+
+export async function readState(file) {
+  const s = await readJson(file, {});
+  return { skills: s.skills ?? {} };
+}
+
+export const writeState = (file, state) =>
+  writeJson(file, {
+    skills: Object.fromEntries(Object.entries(state.skills).sort(([a], [b]) => a.localeCompare(b))),
+  });
 
 export async function syncOverrides({ settingsFile, globalDir, localDir }) {
   let settings = {};
