@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { cacheDir } from "./paths.js";
-import { exists } from "./store.js";
+import { exists, findSkills } from "./store.js";
 
 const git = promisify(execFile);
 
@@ -100,18 +100,63 @@ export async function fetchRepo(spec) {
 }
 
 /**
- * Gets the configured skills repository spec.
+ * Builds a stable identity for a repository spec so equivalent spellings compare equal.
  *
- * The `SPM_REPO` environment variable takes precedence over the manifest.
+ * @param {string} spec Repository spec, as accepted by `parseRepo`.
+ * @returns {string} Key combining clone URL, ref and subdirectory.
+ */
+export function repoKey(spec) {
+  const { url, ref, subdir } = parseRepo(spec);
+  return `${url}#${ref ?? ""}/${subdir ?? ""}`;
+}
+
+/**
+ * Gets the configured pool of skills repository specs.
  *
- * @param {{repo?: string}} manifest Project manifest.
- * @returns {string} Repository spec.
+ * The `SPM_REPO` environment variable replaces the manifest's pool with a single repo.
+ *
+ * @param {{repos?: string[]}} manifest Project manifest.
+ * @returns {string[]} Repository specs, in search order.
  * @throws {Error} If no repository is configured.
  */
-export function repoSpec(manifest) {
-  const spec = process.env.SPM_REPO ?? manifest.repo;
-  if (!spec) {
-    throw new Error("no skills repo configured. Run: spm init <owner/repo>");
+export function repoSpecs(manifest) {
+  const specs = process.env.SPM_REPO ? [process.env.SPM_REPO] : (manifest.repos ?? []);
+  if (!specs.length) {
+    throw new Error("no skills repo configured. Run: spm repo add <owner/repo>");
   }
-  return spec;
+  return specs;
+}
+
+/**
+ * Fetches every repo and indexes their skills by name.
+ *
+ * @param {string[]} specs Repository specs, in search order.
+ * @returns {Promise<Map<string, {repo: string, src: string}[]>>} Candidates per skill name, in repo order.
+ * @throws {Error} If any repo cannot be fetched.
+ */
+export async function loadPool(specs) {
+  const pool = new Map();
+  const indexed = await Promise.all(specs.map(async (repo) => findSkills(await fetchRepo(repo))));
+  for (const [i, skills] of indexed.entries()) {
+    const repo = specs[i];
+    for (const [name, src] of skills) {
+      if (!pool.has(name)) pool.set(name, []);
+      pool.get(name).push({ repo, src });
+    }
+  }
+  return pool;
+}
+
+/**
+ * Picks the candidate for a skill, preferring a specific repo when one is requested.
+ *
+ * @param {{repo: string, src: string}[]|undefined} candidates Candidates from `loadPool`.
+ * @param {string} [wanted] Repo spec the skill must come from.
+ * @returns {{repo: string, src: string}|undefined} The chosen candidate, if any.
+ */
+export function pickCandidate(candidates, wanted) {
+  if (!candidates?.length) return undefined;
+  if (!wanted) return candidates[0];
+  const key = repoKey(wanted);
+  return candidates.find((c) => repoKey(c.repo) === key);
 }

@@ -70,7 +70,7 @@ describe("spm cli", () => {
     await spm("init", repoDir);
     await spm("install", "demo");
     const manifest = JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
-    expect(manifest).toMatchObject({ repo: repoDir, skills: ["demo"] });
+    expect(manifest).toMatchObject({ repos: [repoDir], skills: { demo: repoDir } });
     await fs.access(path.join(project, ".claude", ".spm-state.json"));
     await expect(fs.access(path.join(project, ".claude", "skills.json"))).rejects.toThrow();
   });
@@ -136,7 +136,7 @@ describe("spm cli", () => {
     expect(err.stderr).toContain("not found");
     expect(err.stderr).toContain("did you mean: demo");
     const manifest = JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
-    expect(manifest.skills).not.toContain("demo-extra");
+    expect(manifest.skills).not.toHaveProperty("demo-extra");
   });
 
   it("keeps local edits on re-install unless --force is given", async () => {
@@ -170,5 +170,89 @@ describe("spm cli", () => {
       await fs.readFile(path.join(project, ".claude", "settings.json"), "utf8"),
     );
     expect(settings.skillOverrides?.other).toBeUndefined();
+  });
+
+  describe("repo pool", () => {
+    let second;
+    beforeEach(async () => {
+      second = path.join(path.dirname(repoDir), "repo2");
+      for (const name of ["demo", "extra"]) {
+        await fs.mkdir(path.join(second, "skills", name), { recursive: true });
+        await fs.writeFile(
+          path.join(second, "skills", name, "SKILL.md"),
+          `---
+description: Second ${name}
+---
+`,
+        );
+      }
+      const g = (...args) => run("git", args, { cwd: second });
+      await g("init", "-q");
+      await g("add", ".");
+      await g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init");
+    });
+
+    const manifestOf = async () =>
+      JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
+
+    it("adds repos, searches all of them and pins each skill to its source", async () => {
+      await spm("init", repoDir);
+      expect((await spm("repo", "add", second)).stdout).toContain("added");
+      expect((await spm("repo", "add", second)).stdout).toContain("already in the pool");
+      await spm("install", "extra");
+      expect((await manifestOf()).skills.extra).toBe(second);
+      const { stdout } = await spm("available");
+      expect(stdout).toContain("extra");
+      expect(stdout).toContain("A demo");
+      expect(stdout).toContain("Second demo");
+    });
+
+    it("takes the first repo on a clash, warns, and honors --from", async () => {
+      await spm("init", repoDir);
+      await spm("repo", "add", second);
+      const first = await spm("install", "demo");
+      expect(first.stderr).toContain("also in");
+      expect((await manifestOf()).skills.demo).toBe(repoDir);
+      await spm("install", "demo", "--force", "--from", second);
+      expect((await manifestOf()).skills.demo).toBe(second);
+      const skill = path.join(project, ".claude", "skills", "demo", "SKILL.md");
+      expect(await fs.readFile(skill, "utf8")).toContain("Second demo");
+      await fs.rm(path.join(project, ".claude"), { recursive: true });
+      await spm("install");
+      expect(await fs.readFile(skill, "utf8")).toContain("Second demo");
+    });
+
+    it("rejects --from for a repo outside the pool", async () => {
+      await spm("init", repoDir);
+      const err = await spm("install", "demo", "--from", second).catch((e) => e);
+      expect(err.code).toBe(1);
+      expect(err.stderr).toContain("not in the repo pool");
+    });
+
+    it("refuses to remove a repo that installed skills use unless forced", async () => {
+      await spm("init", repoDir);
+      await spm("repo", "add", second);
+      await spm("install", "extra");
+      const err = await spm("repo", "rm", second).catch((e) => e);
+      expect(err.code).toBe(1);
+      expect(err.stderr).toContain("extra");
+      await spm("repo", "rm", second, "--force");
+      const m = await manifestOf();
+      expect(m.repos).toEqual([repoDir]);
+      expect(m.skills.extra).toBeNull();
+    });
+
+    it("migrates a legacy spm.json and lists the pool", async () => {
+      await fs.writeFile(
+        path.join(project, "spm.json"),
+        JSON.stringify({ repo: repoDir, skills: ["demo"], isolate: true }),
+      );
+      await spm("install");
+      await fs.access(path.join(project, ".claude", "skills", "demo", "SKILL.md"));
+      expect((await spm("repo", "list")).stdout).toContain("(1 installed)");
+      const m = await manifestOf();
+      expect(m).toMatchObject({ repos: [repoDir], skills: { demo: repoDir }, isolate: true });
+      expect(m).not.toHaveProperty("repo");
+    });
   });
 });

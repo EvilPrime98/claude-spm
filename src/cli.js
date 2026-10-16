@@ -1,10 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { globalSkillsDir, projectPaths } from "./paths.js";
-import { fetchRepo, repoSpec } from "./repo.js";
+import { loadPool, pickCandidate, repoKey, repoSpecs } from "./repo.js";
 import {
   listSkills,
-  findSkills,
   describe,
   hashDir,
   copySkill,
@@ -17,27 +16,31 @@ import {
   removeOverrides,
 } from "./store.js";
 
-const HELP = `spm - install Claude skills from a GitHub repo into a project
+const HELP = `spm - install Claude skills from GitHub repos into a project
 
 Usage:
-  spm init [owner/repo[#ref]]   create spm.json, record the skills repo, and hide global
+  spm init [owner/repo[#ref]]   create spm.json, add the repo to the pool, and hide global
                                 skills in this project (only project skills stay)
+  spm repo add <owner/repo>     add a skills repo to the pool (spm.json "repos")
+  spm repo rm <owner/repo>      remove a repo from the pool (--force if skills use it)
+  spm repo list                 repos in the pool (alias: ls)
   spm install <skill...>        add skills to spm.json and copy them into ./.claude/skills
-                                (alias: i, add)
+                                from the first repo that has them (alias: i, add)
   spm install                   recreate .claude/skills from spm.json (like npm install)
   spm uninstall <skill...>      remove skills from the project (alias: rm, remove)
   spm update [skill...]         re-copy installed skills from the repo
   spm list                      skills installed in this project (alias: ls)
-  spm available [filter]        skills available in the repo (alias: search)
+  spm available [filter]        skills available in the pool (alias: search)
 
 Options:
   -f, --force    overwrite a skill that already exists locally
+  --from <repo>  with install: take the skills from this repo of the pool
   --no-isolate   with init: don't hide global skills (and stop doing so if previously on)
   -h, --help     show this help
   -v, --version  print the spm version
 
 Env:
-  SPM_REPO         skills repo (owner/repo[#ref], git URL or path); overrides spm.json
+  SPM_REPO         single skills repo (owner/repo[#ref], git URL or path); replaces the pool
   SPM_CACHE_DIR    where repos are cloned (default: ~/.cache/spm)
   SPM_GLOBAL_DIR   global skills folder hidden by isolation (default: ~/.claude/skills)
 `;
@@ -60,40 +63,85 @@ async function save(p, { manifest, state }) {
 async function init(p, { isolate, repo } = {}) {
   await fs.mkdir(p.skillsDir, { recursive: true });
   const cfg = await load(p);
-  if (repo) cfg.manifest.repo = repo;
+  if (repo) cfg.manifest.repos = withRepo(cfg.manifest.repos, repo);
   if (isolate !== undefined) cfg.manifest.isolate = isolate;
   await save(p, cfg);
   if (isolate === false) await removeOverrides(p.settings, globalSkillsDir());
   return cfg.manifest;
 }
 
-async function install(names, { force }) {
+/** Adds a repo spec to the pool unless an equivalent one is already there. */
+function withRepo(repos, spec) {
+  const key = repoKey(spec);
+  return repos.some((r) => repoKey(r) === key) ? repos : [...repos, spec];
+}
+
+/** Finds the pool entry equivalent to `spec`. */
+function findRepo(repos, spec) {
+  const key = repoKey(spec);
+  return repos.find((r) => repoKey(r) === key);
+}
+
+/** The repo a skill is pinned to in the manifest; `SPM_REPO` overrides pins. */
+function pinnedRepo(manifest, name) {
+  return process.env.SPM_REPO ? undefined : (manifest.skills[name] ?? undefined);
+}
+
+/** Repos to fetch for `names`: those the skills are pinned to, or the whole pool when any is unpinned. */
+function reposFor(manifest, names) {
+  const pool = repoSpecs(manifest);
+  if (process.env.SPM_REPO) return pool;
+  const pins = names.map((n) => manifest.skills[n] && findRepo(pool, manifest.skills[n]));
+  if (pins.some((pin) => !pin)) return pool;
+  return [...new Set(pins)];
+}
+
+async function install(names, { force, from }) {
   const p = projectPaths();
   const cfg = await load(p);
   const { manifest, state } = cfg;
-  const targets = names.length ? names : [...manifest.skills];
+  const targets = names.length ? names : Object.keys(manifest.skills);
   if (!targets.length) return console.log("Nothing to install. Usage: spm install <skill>");
 
-  const spec = repoSpec(manifest);
-  const repoSkills = await findSkills(await fetchRepo(spec));
-  const available = [...repoSkills.keys()].sort();
+  const specs = repoSpecs(manifest);
+  const source = from && findRepo(specs, from);
+  if (from && !source) {
+    throw new Error(`${from} is not in the repo pool. Run: spm repo add ${from}`);
+  }
+  let fetchSpecs = specs;
+  if (source) fetchSpecs = [source];
+  else if (!names.length) fetchSpecs = reposFor(manifest, targets);
+  const pool = await loadPool(fetchSpecs);
+  const available = [...pool.keys()].sort();
   await fs.mkdir(p.skillsDir, { recursive: true });
 
   for (const name of targets) {
-    const src = repoSkills.get(name);
+    const candidates = pool.get(name);
+    // Reinstalling from spm.json keeps the repo each skill came from.
+    const wanted = source ?? (names.length ? undefined : pinnedRepo(manifest, name));
+    const found = pickCandidate(candidates, wanted);
     const dest = path.join(p.skillsDir, name);
-    if (!src) {
-      console.error(`✗ ${name}: not found in ${spec}${suggest(name, available)}`);
+    if (!found) {
+      console.error(
+        `✗ ${name}: not found in ${wanted ?? specs.join(", ")}${suggest(name, available)}`,
+      );
       process.exitCode = 1;
       continue;
     }
-    if (!manifest.skills.includes(name)) manifest.skills.push(name);
+    if (!wanted && candidates.length > 1) {
+      const others = candidates
+        .slice(1)
+        .map((c) => c.repo)
+        .join(", ");
+      console.error(`! ${name}: also in ${others}; using ${found.repo} (--from to choose)`);
+    }
+    manifest.skills[name] = process.env.SPM_REPO ? (manifest.skills[name] ?? null) : found.repo;
     if ((await exists(dest)) && !force) {
       console.log(`• ${name}: already installed (use --force to overwrite)`);
       state.skills[name] ??= { hash: await hashDir(dest) };
       continue;
     }
-    await copySkill(src, dest);
+    await copySkill(found.src, dest);
     state.skills[name] = { hash: await hashDir(dest) };
     console.log(`✓ ${name}`);
   }
@@ -107,13 +155,13 @@ async function uninstall(names) {
   const { manifest, state } = cfg;
   for (const name of names) {
     const dest = path.join(p.skillsDir, name);
-    if (!(await exists(dest)) && !manifest.skills.includes(name)) {
+    if (!(await exists(dest)) && !(name in manifest.skills)) {
       console.error(`✗ ${name}: not installed`);
       process.exitCode = 1;
       continue;
     }
     await fs.rm(dest, { recursive: true, force: true });
-    manifest.skills = manifest.skills.filter((n) => n !== name);
+    delete manifest.skills[name];
     delete state.skills[name];
     console.log(`✓ removed ${name}`);
   }
@@ -124,23 +172,26 @@ async function update(names) {
   const p = projectPaths();
   const cfg = await load(p);
   const { manifest, state } = cfg;
-  const targets = names.length ? names : manifest.skills;
+  const targets = names.length ? names : Object.keys(manifest.skills);
   if (!targets.length) return console.log("No skills installed in this project.");
-  const repoSkills = await findSkills(await fetchRepo(repoSpec(manifest)));
+  const installed = targets.filter((n) => n in manifest.skills);
+  const pool = installed.length ? await loadPool(reposFor(manifest, installed)) : new Map();
   for (const name of targets) {
-    const src = repoSkills.get(name);
     const dest = path.join(p.skillsDir, name);
-    if (!manifest.skills.includes(name)) {
+    if (!(name in manifest.skills)) {
       console.error(`✗ ${name}: not installed`);
       process.exitCode = 1;
       continue;
     }
-    if (!src) {
-      console.error(`✗ ${name}: no longer in the repo`);
+    const wanted = pinnedRepo(manifest, name);
+    const found = pickCandidate(pool.get(name), wanted);
+    if (!found) {
+      console.error(`✗ ${name}: no longer in the repo${wanted ? ` (${wanted})` : " pool"}`);
       process.exitCode = 1;
       continue;
     }
-    const repoHash = await hashDir(src);
+    if (!process.env.SPM_REPO) manifest.skills[name] = found.repo;
+    const repoHash = await hashDir(found.src);
     const localHash = (await exists(dest)) ? await hashDir(dest) : null;
     if (repoHash === localHash) {
       state.skills[name] = { hash: repoHash };
@@ -148,7 +199,7 @@ async function update(names) {
       continue;
     }
     const edited = localHash && localHash !== state.skills[name]?.hash;
-    await copySkill(src, dest);
+    await copySkill(found.src, dest);
     state.skills[name] = { hash: repoHash };
     console.log(`✓ ${name}: updated${edited ? " (local edits overwritten)" : ""}`);
   }
@@ -173,19 +224,83 @@ async function list() {
 
 async function available(filter) {
   const p = projectPaths();
-  const spec = repoSpec((await load(p)).manifest);
-  const repoSkills = await findSkills(await fetchRepo(spec));
-  const all = [...repoSkills.keys()]
-    .sort()
-    .filter((n) => !filter || n.includes(filter.toLowerCase()));
-  if (!all.length) {
-    return console.log(`No skills found in ${spec}${filter ? ` matching "${filter}"` : ""}.`);
+  const specs = repoSpecs((await load(p)).manifest);
+  const pool = await loadPool(specs);
+  const rows = [...pool]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(([n]) => !filter || n.includes(filter.toLowerCase()))
+    .flatMap(([name, candidates]) => candidates.map((c) => ({ name, ...c })));
+  if (!rows.length) {
+    const where = specs.join(", ");
+    return console.log(`No skills found in ${where}${filter ? ` matching "${filter}"` : ""}.`);
   }
-  const width = Math.max(...all.map((n) => n.length));
-  for (const name of all) {
-    const desc = (await describe(repoSkills.get(name))).slice(0, 80);
-    console.log(`${name.padEnd(width)}  ${desc}`);
+  const width = Math.max(...rows.map((r) => r.name.length));
+  const repoWidth = Math.max(...rows.map((r) => r.repo.length));
+  for (const { name, repo, src } of rows) {
+    const desc = (await describe(src)).slice(0, 80);
+    const origin = specs.length > 1 ? `${repo.padEnd(repoWidth)}  ` : "";
+    console.log(`${name.padEnd(width)}  ${origin}${desc}`);
   }
+}
+
+async function repo(args, { force }) {
+  const [sub, spec] = args;
+  const p = projectPaths();
+  const cfg = await load(p);
+  const { manifest } = cfg;
+  switch (sub) {
+    case "add": {
+      if (!spec) throw new Error("usage: spm repo add <owner/repo[#ref]>");
+      if (findRepo(manifest.repos, spec)) return console.log(`• ${spec}: already in the pool`);
+      const count = (await loadPool([spec])).size;
+      manifest.repos = withRepo(manifest.repos, spec);
+      await save(p, cfg);
+      return console.log(`✓ added ${spec} (${count} skills)`);
+    }
+    case "remove":
+    case "rm": {
+      if (!spec) throw new Error("usage: spm repo rm <owner/repo[#ref]>");
+      const existing = findRepo(manifest.repos, spec);
+      if (!existing) throw new Error(`${spec} is not in the repo pool`);
+      const users = Object.keys(manifest.skills).filter((n) => manifest.skills[n] === existing);
+      if (users.length && !force) {
+        throw new Error(
+          `${existing} is used by ${users.join(", ")} (use --force to remove anyway)`,
+        );
+      }
+      for (const n of users) manifest.skills[n] = null;
+      manifest.repos = manifest.repos.filter((r) => r !== existing);
+      await save(p, cfg);
+      return console.log(`✓ removed ${existing}`);
+    }
+    case "list":
+    case "ls": {
+      if (!manifest.repos.length) {
+        return console.log("No repos in the pool. Run: spm repo add <owner/repo>");
+      }
+      for (const r of manifest.repos) {
+        const n = Object.values(manifest.skills).filter((v) => v === r).length;
+        console.log(`${r}  (${n} installed)`);
+      }
+      return;
+    }
+    default:
+      throw new Error("usage: spm repo <add|rm|list> [owner/repo]");
+  }
+}
+
+/** Pulls `--from <repo>` (or `--from=<repo>`) out of argv. */
+function takeFrom(argv) {
+  const args = [];
+  let from;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--from") {
+      from = argv[++i];
+      if (!from || from.startsWith("-")) throw new Error("--from needs a repo");
+    } else if (argv[i].startsWith("--from=")) from = argv[i].slice(7);
+    else args.push(argv[i]);
+  }
+  return { args, from };
 }
 
 function suggest(name, available) {
@@ -201,15 +316,16 @@ async function version() {
 /**
  * Runs the spm CLI.
  *
- * Flags (`-f`/`--force`, `-v`/`--version`, `-h`/`--help`, `--no-isolate`) may appear anywhere; the first non-flag argument is the command.
+ * Flags (`-f`/`--force`, `-v`/`--version`, `-h`/`--help`, `--no-isolate`, `--from <repo>`) may appear anywhere; the first non-flag argument is the command.
  *
  * @param {string[]} argv Command-line arguments, without the node and script paths.
  * @returns {Promise<void>}
  * @throws {Error} If the command is unknown or the command fails.
  */
 export async function run(argv) {
-  const flags = new Set(argv.filter((a) => a.startsWith("-")));
-  const [cmd, ...rest] = argv.filter((a) => !a.startsWith("-"));
+  const { args, from } = takeFrom(argv);
+  const flags = new Set(args.filter((a) => a.startsWith("-")));
+  const [cmd, ...rest] = args.filter((a) => !a.startsWith("-"));
   const force = flags.has("-f") || flags.has("--force");
 
   if (flags.has("-v") || flags.has("--version")) return console.log(await version());
@@ -220,8 +336,8 @@ export async function run(argv) {
     case "init": {
       const isolate = !flags.has("--no-isolate");
       const p = projectPaths();
-      const { repo } = await init(p, { isolate, repo: rest[0] });
-      if (!repo && !process.env.SPM_REPO) {
+      const { repos } = await init(p, { isolate, repo: rest[0] });
+      if (!repos.length && !process.env.SPM_REPO) {
         console.log("Tip: set the skills repo with `spm init <owner/repo>`");
       }
       return console.log(
@@ -233,7 +349,7 @@ export async function run(argv) {
     case "install":
     case "i":
     case "add":
-      return install(rest, { force });
+      return install(rest, { force, from });
     case "uninstall":
     case "remove":
     case "rm":
@@ -244,6 +360,9 @@ export async function run(argv) {
     case "list":
     case "ls":
       return list();
+    case "repo":
+    case "repos":
+      return repo(rest, { force });
     case "available":
     case "search":
       return available(rest[0]);
