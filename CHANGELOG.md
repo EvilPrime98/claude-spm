@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/EvilPrime98/claude-spm/compare/v0.4.0...v0.5.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** support a pool of skill repos with spm repo add/rm/list and --from ([028f54e](https://github.com/EvilPrime98/claude-spm/commit/028f54e3cfa58c3f3b797f58a8993a8912fbbbe4))
+* **cli:** support a pool of skill repos with spm repo add/rm/list and --from ([2e7a458](https://github.com/EvilPrime98/claude-spm/commit/2e7a458d371efcc718594dde44f54ab810e38b39))
+
 ## [0.4.0](https://github.com/EvilPrime98/claude-spm/compare/v0.3.0...v0.4.0) (2026-10-16)
 
 
