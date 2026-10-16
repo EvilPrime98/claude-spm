@@ -112,4 +112,63 @@ describe("spm cli", () => {
   it("fails on an unknown command", async () => {
     await expect(spm("nope")).rejects.toMatchObject({ code: 1 });
   });
+
+  it("prints the package version with --version and -v", async () => {
+    const { version } = JSON.parse(await fs.readFile(path.resolve("package.json"), "utf8"));
+    expect((await spm("--version")).stdout.trim()).toBe(version);
+    expect((await spm("-v")).stdout.trim()).toBe(version);
+  });
+
+  it("installs a skill found in a nested skills/ folder by name", async () => {
+    await fs.mkdir(path.join(repoDir, "pkg", "skills", "deep"), { recursive: true });
+    await fs.writeFile(path.join(repoDir, "pkg", "skills", "deep", "SKILL.md"), "---\n---\n");
+    await git("add", ".");
+    await git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "deep");
+    await spm("init", repoDir);
+    await spm("install", "deep");
+    await fs.access(path.join(project, ".claude", "skills", "deep", "SKILL.md"));
+  });
+
+  it("reports an unknown skill with a suggestion and exits non-zero", async () => {
+    await spm("init", repoDir);
+    const err = await spm("install", "demo-extra").catch((e) => e);
+    expect(err.code).toBe(1);
+    expect(err.stderr).toContain("not found");
+    expect(err.stderr).toContain("did you mean: demo");
+    const manifest = JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
+    expect(manifest.skills).not.toContain("demo-extra");
+  });
+
+  it("keeps local edits on re-install unless --force is given", async () => {
+    await spm("init", repoDir);
+    await spm("install", "demo");
+    const file = path.join(project, ".claude", "skills", "demo", "SKILL.md");
+    await fs.appendFile(file, "local\n");
+    expect((await spm("install", "demo")).stdout).toContain("already installed");
+    expect(await fs.readFile(file, "utf8")).toContain("local");
+    expect((await spm("list")).stdout).toContain("(modified)");
+    await spm("install", "demo", "--force");
+    expect(await fs.readFile(file, "utf8")).not.toContain("local");
+  });
+
+  it("update reports up to date, and flags skills removed from the repo", async () => {
+    await spm("init", repoDir);
+    await spm("install", "demo");
+    expect((await spm("update")).stdout).toContain("up to date");
+    await git("rm", "-rq", "skills");
+    await git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "rm");
+    const err = await spm("update").catch((e) => e);
+    expect(err.code).toBe(1);
+    expect(err.stderr).toContain("no longer in the repo");
+  });
+
+  it("uninstall of an unknown skill fails; --no-isolate lifts global overrides", async () => {
+    await spm("init", repoDir);
+    await expect(spm("uninstall", "ghost")).rejects.toMatchObject({ code: 1 });
+    await spm("init", "--no-isolate");
+    const settings = JSON.parse(
+      await fs.readFile(path.join(project, ".claude", "settings.json"), "utf8"),
+    );
+    expect(settings.skillOverrides?.other).toBeUndefined();
+  });
 });

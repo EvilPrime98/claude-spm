@@ -45,3 +45,37 @@ describe("repoSpec", () => {
     expect(() => repoSpec({})).toThrow(/spm init/);
   });
 });
+
+describe("parseRepo subpaths", () => {
+  it("parses GitHub tree URLs", () => {
+    expect(parseRepo("https://github.com/cursor/plugins/tree/main/pstack")).toEqual({
+      url: "https://github.com/cursor/plugins.git",
+      ref: "main",
+      subdir: "pstack",
+    });
+  });
+
+  it("parses owner/repo/subdir", () => {
+    const r = parseRepo("cursor/plugins/pstack#dev");
+    expect(r).toEqual({
+      url: "https://github.com/cursor/plugins.git",
+      ref: "dev",
+      subdir: "pstack",
+    });
+  });
+
+  it("rejects '..' segments in the subdirectory", () => {
+    expect(() => parseRepo("owner/repo/../../x")).toThrow(/\.\./);
+    expect(() => parseRepo("https://github.com/o/r/tree/main/a/../b")).toThrow(/\.\./);
+  });
+
+  it("treats an existing relative directory as a local path", () => {
+    const r = parseRepo("test/../src");
+    expect(r.subdir).toBeUndefined();
+    expect(r.url).toBe("test/../src");
+  });
+
+  it("leaves local paths alone", () => {
+    expect(parseRepo("/tmp/some/path").subdir).toBeUndefined();
+  });
+});
