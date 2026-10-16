@@ -4,6 +4,7 @@ import { globalSkillsDir, projectPaths } from "./paths.js";
 import { fetchRepo, repoSpec } from "./repo.js";
 import {
   listSkills,
+  findSkills,
   describe,
   hashDir,
   copySkill,
@@ -33,6 +34,7 @@ Options:
   -f, --force    overwrite a skill that already exists locally
   --no-isolate   with init: don't hide global skills (and stop doing so if previously on)
   -h, --help     show this help
+  -v, --version  print the spm version
 
 Env:
   SPM_REPO         skills repo (owner/repo[#ref], git URL or path); overrides spm.json
@@ -73,14 +75,14 @@ async function install(names, { force }) {
   if (!targets.length) return console.log("Nothing to install. Usage: spm install <skill>");
 
   const spec = repoSpec(manifest);
-  const sourceDir = await fetchRepo(spec);
-  const available = await listSkills(sourceDir);
+  const repoSkills = await findSkills(await fetchRepo(spec));
+  const available = [...repoSkills.keys()].sort();
   await fs.mkdir(p.skillsDir, { recursive: true });
 
   for (const name of targets) {
-    const src = path.join(sourceDir, name);
+    const src = repoSkills.get(name);
     const dest = path.join(p.skillsDir, name);
-    if (!available.includes(name)) {
+    if (!src) {
       console.error(`✗ ${name}: not found in ${spec}${suggest(name, available)}`);
       process.exitCode = 1;
       continue;
@@ -124,16 +126,16 @@ async function update(names) {
   const { manifest, state } = cfg;
   const targets = names.length ? names : manifest.skills;
   if (!targets.length) return console.log("No skills installed in this project.");
-  const sourceDir = await fetchRepo(repoSpec(manifest));
+  const repoSkills = await findSkills(await fetchRepo(repoSpec(manifest)));
   for (const name of targets) {
-    const src = path.join(sourceDir, name);
+    const src = repoSkills.get(name);
     const dest = path.join(p.skillsDir, name);
     if (!manifest.skills.includes(name)) {
       console.error(`✗ ${name}: not installed`);
       process.exitCode = 1;
       continue;
     }
-    if (!(await exists(src))) {
+    if (!src) {
       console.error(`✗ ${name}: no longer in the repo`);
       process.exitCode = 1;
       continue;
@@ -172,14 +174,16 @@ async function list() {
 async function available(filter) {
   const p = projectPaths();
   const spec = repoSpec((await load(p)).manifest);
-  const dir = await fetchRepo(spec);
-  const all = (await listSkills(dir)).filter((n) => !filter || n.includes(filter.toLowerCase()));
+  const repoSkills = await findSkills(await fetchRepo(spec));
+  const all = [...repoSkills.keys()]
+    .sort()
+    .filter((n) => !filter || n.includes(filter.toLowerCase()));
   if (!all.length) {
     return console.log(`No skills found in ${spec}${filter ? ` matching "${filter}"` : ""}.`);
   }
   const width = Math.max(...all.map((n) => n.length));
   for (const name of all) {
-    const desc = (await describe(path.join(dir, name))).slice(0, 80);
+    const desc = (await describe(repoSkills.get(name))).slice(0, 80);
     console.log(`${name.padEnd(width)}  ${desc}`);
   }
 }
@@ -189,10 +193,26 @@ function suggest(name, available) {
   return close.length ? `\n  did you mean: ${close.join(", ")}?` : "";
 }
 
+async function version() {
+  const pkg = new URL("../package.json", import.meta.url);
+  return JSON.parse(await fs.readFile(pkg, "utf8")).version;
+}
+
+/**
+ * Runs the spm CLI.
+ *
+ * Flags (`-f`/`--force`, `-v`/`--version`, `-h`/`--help`, `--no-isolate`) may appear anywhere; the first non-flag argument is the command.
+ *
+ * @param {string[]} argv Command-line arguments, without the node and script paths.
+ * @returns {Promise<void>}
+ * @throws {Error} If the command is unknown or the command fails.
+ */
 export async function run(argv) {
   const flags = new Set(argv.filter((a) => a.startsWith("-")));
   const [cmd, ...rest] = argv.filter((a) => !a.startsWith("-"));
   const force = flags.has("-f") || flags.has("--force");
+
+  if (flags.has("-v") || flags.has("--version")) return console.log(await version());
 
   if (!cmd || flags.has("-h") || flags.has("--help") || cmd === "help") return console.log(HELP);
 

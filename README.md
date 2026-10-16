@@ -7,7 +7,7 @@ Skill package manager: install skills from a GitHub repo into a project's `.clau
 
 It works like npm: `spm.json` (project root, committed) is your `package.json`, and `.claude/` is your `node_modules` (generated, git-ignorable). Delete `.claude/` and run `spm install` to recreate it.
 
-The repo can keep skills under a `skills/` folder (`skills/<name>/SKILL.md`) or at its root (`<name>/SKILL.md`). `git` must be installed; private repos work through your normal git credentials.
+Skills are discovered broadly: any `skills/<name>/SKILL.md` at any depth (and skill folders at the repo root) is available. If two share a name, the shallowest wins. The repo can also point at a subfolder: `owner/repo/subdir` or a GitHub `.../tree/<ref>/<subdir>` URL (useful for monorepos like `cursor/plugins/pstack`). `git` must be installed; private repos work through your normal git credentials.
 
 ## Install
 
@@ -39,7 +39,7 @@ spm list                 # show skills installed in this project
 | `spm list`               | Skills installed in this project (alias: `ls`)                  |
 | `spm available [filter]` | Skills available in the repo (alias: `search`)                  |
 
-Options: `-f, --force` overwrite an existing local skill; `--no-isolate` with `init` keeps global skills visible; `-h, --help`.
+Options: `-f, --force` overwrite an existing local skill; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
 
 `spm.json` looks like this:
 
