@@ -156,29 +156,42 @@ async function writeJson(file, data) {
   await fs.writeFile(file, JSON.stringify(data, null, 2) + "\n");
 }
 
+const sortKeys = (obj) =>
+  Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
+
 /**
  * Reads the `spm.json` manifest.
  *
- * A missing file yields an empty manifest. The `skills` list is deduplicated and sorted.
+ * A missing file yields an empty manifest. The legacy format (`repo` string and `skills` array) is migrated: `repo` joins `repos`, and every listed skill is pinned to it.
  *
  * @param {string} file Path to the manifest.
- * @returns {Promise<{skills: string[], repo?: string}>} The manifest.
+ * @returns {Promise<{repos: string[], skills: Object<string, (string|null)>}>} The manifest; `skills` maps each name to the repo it came from.
  * @throws {Error} If the file cannot be parsed.
  */
 export async function readManifest(file) {
-  const m = await readJson(file, {});
-  return { ...m, skills: [...new Set(m.skills ?? [])].sort() };
+  const { repo, repos, skills, ...rest } = await readJson(file, {});
+  const pool = [...new Set([...(repo ? [repo] : []), ...(repos ?? [])])];
+  const pinned = Array.isArray(skills)
+    ? Object.fromEntries(skills.map((n) => [n, pool[0] ?? null]))
+    : (skills ?? {});
+  return { ...rest, repos: pool, skills: sortKeys(pinned) };
 }
 
 /**
- * Writes the manifest to disk with a deduplicated, sorted `skills` list.
+ * Writes the manifest to disk with deduplicated repos and skills sorted by name.
  *
  * @param {string} file Path to the manifest.
- * @param {{skills: string[], repo?: string}} manifest Manifest to write.
+ * @param {{repos: string[], skills: Object<string, (string|null)>}} manifest Manifest to write.
  * @returns {Promise<void>}
  */
 export const writeManifest = (file, manifest) =>
-  writeJson(file, { ...manifest, skills: [...new Set(manifest.skills)].sort() });
+  writeJson(file, {
+    repos: [...new Set(manifest.repos)],
+    skills: sortKeys(manifest.skills),
+    ...Object.fromEntries(
+      Object.entries(manifest).filter(([k]) => !["repos", "skills"].includes(k)),
+    ),
+  });
 
 /**
  * Reads the spm state file.

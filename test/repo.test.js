@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { parseRepo, repoSpec } from "../src/repo.js";
+import { parseRepo, repoSpecs } from "../src/repo.js";
 
 const original = process.env.SPM_REPO;
 afterEach(() => {
@@ -29,20 +29,20 @@ describe("parseRepo", () => {
   });
 });
 
-describe("repoSpec", () => {
+describe("repoSpecs", () => {
   it("prefers SPM_REPO over the manifest", () => {
     process.env.SPM_REPO = "env/repo";
-    expect(repoSpec({ repo: "manifest/repo" })).toBe("env/repo");
+    expect(repoSpecs({ repos: ["manifest/repo"] })).toEqual(["env/repo"]);
   });
 
-  it("falls back to the manifest", () => {
+  it("falls back to the manifest pool", () => {
     delete process.env.SPM_REPO;
-    expect(repoSpec({ repo: "manifest/repo" })).toBe("manifest/repo");
+    expect(repoSpecs({ repos: ["a/one", "b/two"] })).toEqual(["a/one", "b/two"]);
   });
 
   it("throws when nothing is configured", () => {
     delete process.env.SPM_REPO;
-    expect(() => repoSpec({})).toThrow(/spm init/);
+    expect(() => repoSpecs({})).toThrow(/spm repo add/);
   });
 });
 

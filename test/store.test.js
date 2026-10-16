@@ -40,9 +40,17 @@ describe("store", () => {
 
   it("returns an empty manifest when the file is missing and round-trips sorted", async () => {
     const file = path.join(tmp, "spm.json");
-    expect(await readManifest(file)).toEqual({ skills: [] });
-    await writeManifest(file, { repo: "o/r", skills: ["b", "a", "b"] });
-    expect(await readManifest(file)).toEqual({ repo: "o/r", skills: ["a", "b"] });
+    expect(await readManifest(file)).toEqual({ repos: [], skills: {} });
+    await writeManifest(file, { repos: ["o/r", "o/r"], skills: { b: "o/r", a: null } });
+    const m = await readManifest(file);
+    expect(m).toEqual({ repos: ["o/r"], skills: { a: null, b: "o/r" } });
+    expect(Object.keys(m.skills)).toEqual(["a", "b"]);
+  });
+
+  it("migrates the legacy manifest format", async () => {
+    const file = path.join(tmp, "spm.json");
+    await fs.writeFile(file, JSON.stringify({ repo: "o/r", skills: ["b", "a"] }));
+    expect(await readManifest(file)).toEqual({ repos: ["o/r"], skills: { a: "o/r", b: "o/r" } });
   });
 
   it("round-trips the install state", async () => {

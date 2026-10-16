@@ -68,8 +68,8 @@ describe("store helpers", () => {
 
   it("manifest round-trip preserves extra fields such as isolate", async () => {
     const file = path.join(tmp, "spm.json");
-    await writeManifest(file, { repo: "o/r", isolate: true, skills: [] });
-    expect(await readManifest(file)).toEqual({ repo: "o/r", isolate: true, skills: [] });
+    await writeManifest(file, { repos: ["o/r"], isolate: true, skills: {} });
+    expect(await readManifest(file)).toEqual({ repos: ["o/r"], isolate: true, skills: {} });
   });
 });
 

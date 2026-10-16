@@ -3,7 +3,7 @@
 [![CI](https://github.com/EvilPrime98/claude-spm/actions/workflows/ci.yml/badge.svg)](https://github.com/EvilPrime98/claude-spm/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/claude-spm.svg)](https://www.npmjs.com/package/claude-spm)
 
-Skill package manager: install skills from a GitHub repo into a project's `.claude/skills`, and optionally hide your global `~/.claude/skills` in that project.
+Skill package manager: install skills from one or more GitHub repos into a project's `.claude/skills`, and optionally hide your global `~/.claude/skills` in that project.
 
 It works like npm: `spm.json` (project root, committed) is your `package.json`, and `.claude/` is your `node_modules` (generated, git-ignorable). Delete `.claude/` and run `spm install` to recreate it.
 
@@ -21,8 +21,9 @@ This provides the `spm` command.
 
 ```bash
 cd my-project
-spm init owner/repo      # record the skills repo (optionally owner/repo#ref)
-spm available            # list skills in the repo
+spm init owner/repo      # add the skills repo to the pool (optionally owner/repo#ref)
+spm repo add other/repo  # optional: add more repos to the pool
+spm available            # list skills in the pool
 spm install graphify     # copy a skill into ./.claude/skills
 spm list                 # show skills installed in this project
 ```
@@ -32,30 +33,38 @@ spm list                 # show skills installed in this project
 | Command                  | Description                                                     |
 | ------------------------ | --------------------------------------------------------------- |
 | `spm init [owner/repo]`  | Create `spm.json` and `.claude/skills`, hide global skills      |
+| `spm repo add <repo>`    | Add a repo to the pool                                          |
+| `spm repo rm <repo>`     | Remove a repo from the pool (`--force` if skills use it)        |
+| `spm repo list`          | Show the pool (alias: `ls`)                                     |
 | `spm install <skill...>` | Add skills to `spm.json` and copy them in (aliases: `i`, `add`) |
 | `spm install`            | Recreate `.claude/skills` from `spm.json`                       |
 | `spm uninstall <skill>`  | Remove skills from the project (aliases: `rm`, `remove`)        |
 | `spm update [skill...]`  | Re-copy installed skills from the repo                          |
 | `spm list`               | Skills installed in this project (alias: `ls`)                  |
-| `spm available [filter]` | Skills available in the repo (alias: `search`)                  |
+| `spm available [filter]` | Skills available in the pool (alias: `search`)                  |
 
-Options: `-f, --force` overwrite an existing local skill; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
+Options: `-f, --force` overwrite an existing local skill; `--from <repo>` with `install` takes the skills from that repo of the pool; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
 
 `spm.json` looks like this:
 
 ```json
 {
-  "repo": "owner/repo",
+  "repos": ["owner/repo", "other/repo"],
   "isolate": true,
-  "skills": ["graphify", "testing-doctor"]
+  "skills": {
+    "graphify": "owner/repo",
+    "testing-doctor": "other/repo"
+  }
 }
 ```
+
+`repos` is the pool, searched in order. `spm install <skill>` takes the skill from the first repo that has it (with a warning if several do; use `--from <repo>` to choose) and records that repo in `skills`, so `spm install` and `spm update` always pull each skill from the repo it came from. Older `spm.json` files (`"repo": "..."`, `"skills": [...]`) are migrated automatically on the next write.
 
 Commit it and add `.claude/` to `.gitignore`; anyone who clones the project runs `spm install`. File hashes used to detect local edits live in `.claude/.spm-state.json`. With isolation on, `spm install` also rewrites `skillOverrides` in `.claude/settings.json`, so that file is regenerated too.
 
 Environment:
 
-- `SPM_REPO` overrides the repo (`owner/repo[#ref]`, a git URL, or a local path).
+- `SPM_REPO` replaces the pool with a single repo (`owner/repo[#ref]`, a git URL, or a local path).
 - `SPM_CACHE_DIR` sets where repos are cloned (default `~/.cache/spm`).
 - `SPM_GLOBAL_DIR` sets the global skills folder that isolation hides (default `~/.claude/skills`).
 
