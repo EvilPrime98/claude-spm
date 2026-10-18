@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/EvilPrime98/claude-spm/compare/v0.5.0...v0.6.0) (2026-10-18)
+
+
+### Features
+
+* **repo:** install single-skill repos with a root SKILL.md ([f09c1f9](https://github.com/EvilPrime98/claude-spm/commit/f09c1f956349a65453e38bf21f77fca01244614e))
+* **repo:** install single-skill repos with a root SKILL.md ([ab1adfc](https://github.com/EvilPrime98/claude-spm/commit/ab1adfc39770e50c6a9846c283aa4e79be40b3ba))
+
 ## [0.5.0](https://github.com/EvilPrime98/claude-spm/compare/v0.4.0...v0.5.0) (2026-10-16)
 
 
