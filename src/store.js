@@ -41,13 +41,21 @@ const MAX_DEPTH = 6;
 /**
  * Finds skills in a directory and in any `skills/` folder below it.
  *
+ * A directory that is itself a skill (has its own `SKILL.md`) is a single-skill repo: it is returned alone, named by its front matter `name` or else `rootName`.
+ *
  * Skips hidden folders, `node_modules`, `dist` and `build`, and searches up to 6 levels deep. The shallowest match wins when names collide.
  *
  * @param {string} root Directory to search.
+ * @param {string} [rootName] Name for `root` when it is itself a skill and declares no usable name.
  * @returns {Promise<Map<string, string>>} Map of skill name to its directory.
  */
-export async function findSkills(root) {
+export async function findSkills(root, rootName) {
   const found = new Map();
+  if (await exists(path.join(root, "SKILL.md"))) {
+    const declared = (await readName(root)) ?? "";
+    const name = /^[\w.-]+$/.test(declared) ? declared : rootName;
+    return name ? found.set(name, root) : found;
+  }
   const add = async (dir) => {
     for (const name of await listSkills(dir)) {
       if (!found.has(name)) found.set(name, path.join(dir, name));
@@ -70,6 +78,14 @@ export async function findSkills(root) {
     level = next;
   }
   return found;
+}
+
+async function readName(dir) {
+  const text = await fs.readFile(path.join(dir, "SKILL.md"), "utf8");
+  return text
+    .match(/^name:\s*(.+)$/m)?.[1]
+    .trim()
+    .replace(/^["']|["']$/g, "");
 }
 
 /**
@@ -95,16 +111,15 @@ export async function describe(skillDir) {
  */
 export async function skillNames(dir, folder) {
   const names = new Set([folder]);
-  const text = await fs.readFile(path.join(dir, folder, "SKILL.md"), "utf8");
-  const m = text.match(/^name:\s*(.+)$/m);
-  if (m) names.add(m[1].trim().replace(/^["']|["']$/g, ""));
+  const name = await readName(path.join(dir, folder));
+  if (name) names.add(name);
   return names;
 }
 
 /**
  * Computes a content hash of a directory tree.
  *
- * Covers relative file paths and file contents, in sorted order.
+ * Covers relative file paths and file contents, in sorted order, ignoring `.git` folders.
  *
  * @param {string} dir Directory to hash.
  * @returns {Promise<string>} First 16 hex characters of the SHA-256 digest.
@@ -116,6 +131,7 @@ export async function hashDir(dir) {
       a.name.localeCompare(b.name),
     );
     for (const e of entries) {
+      if (e.name === ".git") continue;
       const full = path.join(d, e.name);
       if (e.isDirectory()) await walk(full);
       else {
@@ -131,7 +147,7 @@ export async function hashDir(dir) {
 /**
  * Copies a skill directory to a destination, replacing anything already there.
  *
- * Symlinks are dereferenced.
+ * Symlinks are dereferenced and `.git` folders are left out.
  *
  * @param {string} src Source skill directory.
  * @param {string} dest Destination directory.
@@ -139,7 +155,11 @@ export async function hashDir(dir) {
  */
 export async function copySkill(src, dest) {
   await fs.rm(dest, { recursive: true, force: true });
-  await fs.cp(src, dest, { recursive: true, dereference: true });
+  await fs.cp(src, dest, {
+    recursive: true,
+    dereference: true,
+    filter: (file) => path.basename(file) !== ".git",
+  });
 }
 
 async function readJson(file, fallback) {

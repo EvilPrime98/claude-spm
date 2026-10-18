@@ -7,7 +7,7 @@ Skill package manager: install skills from one or more GitHub repos into a proje
 
 It works like npm: `spm.json` (project root, committed) is your `package.json`, and `.claude/` is your `node_modules` (generated, git-ignorable). Delete `.claude/` and run `spm install` to recreate it.
 
-Skills are discovered broadly: any `skills/<name>/SKILL.md` at any depth (and skill folders at the repo root) is available. If two share a name, the shallowest wins. The repo can also point at a subfolder: `owner/repo/subdir` or a GitHub `.../tree/<ref>/<subdir>` URL (useful for monorepos like `cursor/plugins/pstack`). `git` must be installed; private repos work through your normal git credentials.
+Skills are discovered broadly: any `skills/<name>/SKILL.md` at any depth (and skill folders at the repo root) is available. If two share a name, the shallowest wins. A repo (or subfolder) that has a `SKILL.md` at its root is a single-skill repo: it is installed as one skill, named by the `name` in its front matter, or else by the repo name. The repo can also point at a subfolder: `owner/repo/subdir` or a GitHub `.../tree/<ref>/<subdir>` URL (useful for monorepos like `cursor/plugins/pstack`). `git` must be installed; private repos work through your normal git credentials.
 
 ## Install
 

@@ -127,6 +127,11 @@ export function repoSpecs(manifest) {
   return specs;
 }
 
+function defaultName(spec) {
+  const { url, subdir } = parseRepo(spec);
+  return path.basename(subdir ?? url, ".git").replace(/[^\w.-]/g, "_");
+}
+
 /**
  * Fetches every repo and indexes their skills by name.
  *
@@ -136,7 +141,9 @@ export function repoSpecs(manifest) {
  */
 export async function loadPool(specs) {
   const pool = new Map();
-  const indexed = await Promise.all(specs.map(async (repo) => findSkills(await fetchRepo(repo))));
+  const indexed = await Promise.all(
+    specs.map(async (repo) => findSkills(await fetchRepo(repo), defaultName(repo))),
+  );
   for (const [i, skills] of indexed.entries()) {
     const repo = specs[i];
     for (const [name, src] of skills) {
