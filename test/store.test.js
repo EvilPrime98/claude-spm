@@ -83,3 +83,36 @@ describe("findSkills", () => {
     expect(found.get("one")).toBe(path.join(root, "a/skills/one"));
   });
 });
+
+describe("findSkills single-skill repo", () => {
+  const setup = async (body) => {
+    await fs.writeFile(path.join(tmp, "SKILL.md"), body);
+    await fs.writeFile(path.join(tmp, "README.md"), "readme");
+    await makeSkill(tmp, "nested");
+  };
+
+  it("treats a root SKILL.md as the only skill, named by its front matter", async () => {
+    const { findSkills } = await import("../src/store.js");
+    await setup("---\nname: llm-council\n---\n");
+    expect(await findSkills(tmp, "repo-name")).toEqual(new Map([["llm-council", tmp]]));
+  });
+
+  it("falls back to the given name when the front matter has none", async () => {
+    const { findSkills } = await import("../src/store.js");
+    await setup("no front matter");
+    expect(await findSkills(tmp, "repo-name")).toEqual(new Map([["repo-name", tmp]]));
+  });
+
+  it("ignores .git when hashing and copying", async () => {
+    const { copySkill } = await import("../src/store.js");
+    await setup("x");
+    const before = await hashDir(tmp);
+    await fs.mkdir(path.join(tmp, ".git"));
+    await fs.writeFile(path.join(tmp, ".git", "HEAD"), "ref");
+    expect(await hashDir(tmp)).toBe(before);
+    const copy = path.join(os.tmpdir(), path.basename(tmp) + "-copy");
+    await copySkill(tmp, copy);
+    expect((await fs.readdir(copy)).sort()).toEqual(["README.md", "SKILL.md", "nested"]);
+    await fs.rm(copy, { recursive: true, force: true });
+  });
+});
