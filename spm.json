@@ -1,0 +1,19 @@
+{
+  "repos": ["https://github.com/evilPrime98/mySkills"],
+  "skills": {
+    "git-commit-doctor": "https://github.com/evilPrime98/mySkills",
+    "graphify": "https://github.com/evilPrime98/mySkills",
+    "jsdoc-author": "https://github.com/evilPrime98/mySkills",
+    "knip-doctor": "https://github.com/evilPrime98/mySkills",
+    "less-is-more": "https://github.com/evilPrime98/mySkills",
+    "new-skill-doctor": "https://github.com/evilPrime98/mySkills",
+    "npm-ready-doctor": "https://github.com/evilPrime98/mySkills",
+    "pr-doctor": "https://github.com/evilPrime98/mySkills",
+    "pre-push-production-doctor": "https://github.com/evilPrime98/mySkills",
+    "readme-creator-doctor": "https://github.com/evilPrime98/mySkills",
+    "reenforcement": "https://github.com/evilPrime98/mySkills",
+    "silencer": "https://github.com/evilPrime98/mySkills",
+    "testing-doctor": "https://github.com/evilPrime98/mySkills"
+  },
+  "isolate": true
+}
