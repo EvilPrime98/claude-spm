@@ -136,7 +136,7 @@ export async function hashDir(dir) {
       if (e.isDirectory()) await walk(full);
       else {
         h.update(path.relative(dir, full).replaceAll("\\", "/"));
-        h.update(await fs.readFile(full));
+        h.update(e.isSymbolicLink() ? `-> ${await fs.readlink(full)}` : await fs.readFile(full));
       }
     }
   };
@@ -185,7 +185,7 @@ const sortKeys = (obj) =>
  * A missing file yields an empty manifest. The legacy format (`repo` string and `skills` array) is migrated: `repo` joins `repos`, and every listed skill is pinned to it.
  *
  * @param {string} file Path to the manifest.
- * @returns {Promise<{repos: string[], skills: Object<string, (string|null)>}>} The manifest; `skills` maps each name to the repo it came from.
+ * @returns {Promise<{repos: string[], skills: Object<string, (string|{repo: string, ref?: string, market?: string}|null)>}>} The manifest; `skills` maps each name to the repo it came from, or to `{repo, ref, market}` for a market install.
  * @throws {Error} If the file cannot be parsed.
  */
 export async function readManifest(file) {
@@ -201,7 +201,7 @@ export async function readManifest(file) {
  * Writes the manifest to disk with deduplicated repos and skills sorted by name.
  *
  * @param {string} file Path to the manifest.
- * @param {{repos: string[], skills: Object<string, (string|null)>}} manifest Manifest to write.
+ * @param {{repos: string[], skills: Object<string, (string|{repo: string, ref?: string, market?: string}|null)>}} manifest Manifest to write.
  * @returns {Promise<void>}
  */
 export const writeManifest = (file, manifest) =>
