@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/EvilPrime98/claude-spm/compare/v0.6.0...v0.7.0) (2026-10-19)
+
+
+### Features
+
+* **markets:** search and install skills from skillsmp ([951badf](https://github.com/EvilPrime98/claude-spm/commit/951badfb5e1e63286143a894aa7c2b971d820325))
+* **markets:** search and install skills from skillsmp with commit pinning and review ([ae0ed97](https://github.com/EvilPrime98/claude-spm/commit/ae0ed97cc814b495addd59b186449df877883f8d))
+
+
+### Bug Fixes
+
+* **store:** hash symlinks by target instead of following them ([b5f4357](https://github.com/EvilPrime98/claude-spm/commit/b5f435746c59320695e93911ebe2d520d55ccf34))
+
 ## [0.6.0](https://github.com/EvilPrime98/claude-spm/compare/v0.5.0...v0.6.0) (2026-10-18)
 
 
