@@ -1,6 +1,6 @@
 {
   "name": "claude-spm",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Skill package manager: install skills from a GitHub repo into a project's .claude/skills",
   "keywords": [
     "claude",
