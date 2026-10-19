@@ -136,7 +136,7 @@ export async function hashDir(dir) {
       if (e.isDirectory()) await walk(full);
       else {
         h.update(path.relative(dir, full).replaceAll("\\", "/"));
-        h.update(await fs.readFile(full));
+        h.update(e.isSymbolicLink() ? `-> ${await fs.readlink(full)}` : await fs.readFile(full));
       }
     }
   };
