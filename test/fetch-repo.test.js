@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchRepo, parseRepo } from "../src/repo.js";
+import { entrySpec, fetchRepo, parseRepo, pinSpec } from "../src/repo.js";
 
 describe("parseRepo edge cases", () => {
   it("lets an explicit #ref override the ref in a tree URL", () => {
@@ -26,6 +26,27 @@ describe("parseRepo edge cases", () => {
 
   it("does not treat relative paths as owner/repo/subdir", () => {
     expect(parseRepo("./a/b/c").subdir).toBeUndefined();
+  });
+});
+
+describe("pinSpec and entrySpec", () => {
+  const sha = "a".repeat(40);
+
+  it("replaces an existing ref", () => {
+    expect(pinSpec("o/r/sub", sha)).toBe(`o/r/sub#${sha}`);
+    expect(pinSpec("o/r#main", sha)).toBe(`o/r#${sha}`);
+    expect(parseRepo(pinSpec("https://github.com/o/r/tree/main/sub", sha))).toMatchObject({
+      ref: sha,
+      subdir: "sub",
+    });
+  });
+
+  it("uses a string entry as is and pins an object entry unless latest", () => {
+    expect(entrySpec("o/r")).toBe("o/r");
+    expect(entrySpec(null)).toBeUndefined();
+    const entry = { repo: "o/r/sub", ref: sha, market: "skillsmp" };
+    expect(entrySpec(entry)).toBe(`o/r/sub#${sha}`);
+    expect(entrySpec(entry, { latest: true })).toBe("o/r/sub");
   });
 });
 
@@ -53,7 +74,7 @@ describe("fetchRepo", () => {
   });
 
   it("clones a local repo into the cache", async () => {
-    const dir = await fetchRepo(src);
+    const { root: dir } = await fetchRepo(src);
     expect(await fs.readFile(path.join(dir, "pkg", "f.txt"), "utf8")).toBe("one");
     expect(dir.startsWith(process.env.SPM_CACHE_DIR)).toBe(true);
   });
@@ -62,7 +83,7 @@ describe("fetchRepo", () => {
     await fetchRepo(src);
     await fs.writeFile(path.join(src, "pkg", "f.txt"), "two");
     await git(src, "commit", "-qam", "edit");
-    const dir = await fetchRepo(src);
+    const { root: dir } = await fetchRepo(src);
     expect(await fs.readFile(path.join(dir, "pkg", "f.txt"), "utf8")).toBe("two");
   });
 
@@ -70,10 +91,45 @@ describe("fetchRepo", () => {
     await fetchRepo(src);
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     await fs.rename(src, path.join(root, "moved"));
-    const dir = await fetchRepo(src);
+    const { root: dir } = await fetchRepo(src);
     expect(await fs.readFile(path.join(dir, "pkg", "f.txt"), "utf8")).toBe("one");
     expect(spy).toHaveBeenCalledWith(expect.stringContaining("using cached copy"));
     spy.mockRestore();
+  });
+
+  it("reports the commit it is at", async () => {
+    const { sha } = await fetchRepo(src);
+    const { stdout } = await git(src, "rev-parse", "HEAD");
+    expect(sha).toBe(stdout.trim());
+  });
+
+  it("fetches an exact commit when the ref is a SHA, even after the repo moved on", async () => {
+    const { sha: first } = await fetchRepo(src);
+    await fs.writeFile(path.join(src, "pkg", "f.txt"), "two");
+    await git(src, "commit", "-qam", "edit");
+    await fs.rm(process.env.SPM_CACHE_DIR, { recursive: true });
+
+    const pinned = await fetchRepo(pinSpec(src, first));
+    expect(pinned.sha).toBe(first);
+    expect(await fs.readFile(path.join(pinned.root, "pkg", "f.txt"), "utf8")).toBe("one");
+  });
+
+  it("reuses a cached clone already at the pinned commit without the origin", async () => {
+    const { sha } = await fetchRepo(src);
+    await fs.rm(process.env.SPM_CACHE_DIR, { recursive: true });
+    await fetchRepo(pinSpec(src, sha));
+    await fs.rename(src, path.join(root, "moved"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const again = await fetchRepo(pinSpec(src, sha));
+    expect(again.sha).toBe(sha);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("leaves no half-made cache entry when a pinned fetch fails", async () => {
+    const bogus = "0".repeat(40);
+    await expect(fetchRepo(pinSpec(src, bogus))).rejects.toThrow(/git fetch failed/);
+    await expect(fetchRepo(pinSpec(src, bogus))).rejects.toThrow(/git fetch failed/);
   });
 
   it("fails when the clone source does not exist", async () => {
