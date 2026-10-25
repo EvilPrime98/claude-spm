@@ -11,11 +11,18 @@ const ENDPOINT = "https://skillsmp.com/api/v1/skills/search";
 const GITHUB = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(\/|$)/;
 
 async function query(q, limit) {
-  const headers = { "User-Agent": "spm (claude-spm)", Accept: "application/json" };
+  const headers = {
+    "User-Agent": "spm/0.7 (+https://github.com/EvilPrime98/claude-spm)",
+  };
   if (process.env.SKILLSMP_API_KEY)
     headers.Authorization = `Bearer ${process.env.SKILLSMP_API_KEY}`;
   const url = `${ENDPOINT}?${new URLSearchParams({ q, limit })}`;
-  const res = await fetch(url, { headers });
+  let res = await fetch(url, { headers });
+  // Cloudflare challenges the first request on a fresh connection; the retry goes through.
+  if (res.status === 403) {
+    await res.arrayBuffer();
+    res = await fetch(url, { headers });
+  }
   if (res.status === 429) {
     const wait = res.headers.get("retry-after");
     throw new Error(
