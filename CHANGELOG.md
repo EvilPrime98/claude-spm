@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/EvilPrime98/claude-spm/compare/v0.7.0...v0.7.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **markets:** retry skillsmp search once on 403 ([055f01d](https://github.com/EvilPrime98/claude-spm/commit/055f01dcd87bffc9b3d7aa4addfad0cb56a2e82a))
+* **markets:** retry skillsmp search once on 403 ([b6cd454](https://github.com/EvilPrime98/claude-spm/commit/b6cd4542dcb1824fc722cf04f326b25c903ff897))
+
 ## [0.7.0](https://github.com/EvilPrime98/claude-spm/compare/v0.6.0...v0.7.0) (2026-10-19)
 
 
