@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/EvilPrime98/claude-spm/compare/v0.7.1...v0.8.0) (2026-10-28)
+
+
+### Features
+
+* add -g/--global flag to spm install ([3bff315](https://github.com/EvilPrime98/claude-spm/commit/3bff3152e03d556f87a12407534dc486d8f50704))
+* **install:** add -g/--global flag to install skills globally ([66974a6](https://github.com/EvilPrime98/claude-spm/commit/66974a6bb6d87d1874fd69815682ae40611170a5))
+
 ## [0.7.1](https://github.com/EvilPrime98/claude-spm/compare/v0.7.0...v0.7.1) (2026-10-25)
 
 
