@@ -6,6 +6,21 @@
   "skills": {
     "git-commit-doctor": "https://github.com/evilPrime98/mySkills",
     "graphify": "https://github.com/evilPrime98/mySkills",
+    "grill-me": {
+      "repo": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me",
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "market": "skillsmp"
+    },
+    "grill-with-docs": {
+      "repo": "https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs",
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "market": "skillsmp"
+    },
+    "grilling": {
+      "repo": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling",
+      "ref": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "market": "skillsmp"
+    },
     "jsdoc-author": "https://github.com/evilPrime98/mySkills",
     "knip-doctor": "https://github.com/evilPrime98/mySkills",
     "less-is-more": "https://github.com/evilPrime98/mySkills",
