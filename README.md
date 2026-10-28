@@ -49,22 +49,23 @@ spm list                 # show skills installed in this project
 
 ## Commands
 
-| Command                        | Description                                                             |
-| ------------------------------ | ----------------------------------------------------------------------- |
-| `spm init [owner/repo]`        | Create `spm.json` and `.claude/skills`, hide global skills              |
-| `spm repo add <repo>`          | Add a repo to the pool                                                  |
-| `spm repo rm <repo>`           | Remove a repo from the pool (`--force` if skills use it)                |
-| `spm repo list`                | Show the pool (alias: `ls`)                                             |
-| `spm install <skill...>`       | Add skills to `spm.json` and copy them in (aliases: `i`, `add`)         |
-| `spm install`                  | Recreate `.claude/skills` from `spm.json`                               |
-| `spm uninstall <skill>`        | Remove skills from the project (aliases: `rm`, `remove`)                |
-| `spm install <market>:<skill>` | Review and install a skill from a market, pinned to a commit            |
-| `spm update [skill...]`        | Re-copy installed skills from the repo (`--latest` moves market skills) |
-| `spm list`                     | Skills installed in this project (alias: `ls`)                          |
-| `spm available [filter]`       | Skills available in the pool                                            |
-| `spm search <term>`            | Search the skill markets (`--market <id>` to pick one)                  |
+| Command                        | Description                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `spm init [owner/repo]`        | Create `spm.json` and `.claude/skills`, hide global skills                   |
+| `spm repo add <repo>`          | Add a repo to the pool                                                       |
+| `spm repo rm <repo>`           | Remove a repo from the pool (`--force` if skills use it)                     |
+| `spm repo list`                | Show the pool (alias: `ls`)                                                  |
+| `spm install <skill...>`       | Add skills to `spm.json` and copy them in (aliases: `i`, `add`)              |
+| `spm install -g <skill...>`    | Copy skills into the global folder (`~/.claude/skills`); nothing is recorded |
+| `spm install`                  | Recreate `.claude/skills` from `spm.json`                                    |
+| `spm uninstall <skill>`        | Remove skills from the project (aliases: `rm`, `remove`)                     |
+| `spm install <market>:<skill>` | Review and install a skill from a market, pinned to a commit                 |
+| `spm update [skill...]`        | Re-copy installed skills from the repo (`--latest` moves market skills)      |
+| `spm list`                     | Skills installed in this project (alias: `ls`)                               |
+| `spm available [filter]`       | Skills available in the pool                                                 |
+| `spm search <term>`            | Search the skill markets (`--market <id>` to pick one)                       |
 
-Options: `-f, --force` overwrite an existing local skill; `--from <repo>` with `install` takes the skills from that repo of the pool (or from a market id); `-y, --yes` skips the review prompt of market installs; `--latest` with `update` moves market skills to the newest commit; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
+Options: `-f, --force` overwrite an existing local skill; `--from <repo>` with `install` takes the skills from that repo of the pool (or from a market id); `-y, --yes` skips the review prompt of market installs; `--latest` with `update` moves market skills to the newest commit; `-g, --global` with `install` copies skills into the global folder; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
 
 `spm.json` looks like this:
 

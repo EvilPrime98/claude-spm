@@ -43,6 +43,8 @@ Options:
   --from <repo>    with install: take the skills from this repo of the pool, or from a market id
   --market <id>    with search: only query this market
   --latest         with update: move market skills to the newest commit (asks to review it)
+  -g, --global     with install: copy the skills into the global skills folder (no spm.json,
+                   nothing recorded; spm-isolated projects still hide them)
   -y, --yes        skip the review confirmation of market installs and updates
   --no-isolate     with init: don't hide global skills (and stop doing so if previously on)
   -h, --help       show this help
@@ -227,6 +229,71 @@ async function install(allNames, { force, from, yes }) {
     console.log(`✓ ${name}`);
   }
   await save(p, cfg);
+}
+
+/**
+ * Copies skills into the global skills folder without recording anything.
+ *
+ * The project manifest is only read, for its repo pool; nothing is written back.
+ */
+async function installGlobal(allNames, { force, from, yes }) {
+  if (!allNames.length) throw new Error("usage: spm install -g <skill...>");
+  const p = { skillsDir: globalSkillsDir() };
+  const cfg = {
+    manifest: await readManifest(projectPaths().manifest),
+    state: { skills: {} },
+  };
+
+  const viaMarket = from && Object.hasOwn(markets, from) ? from : undefined;
+  if (viaMarket) from = undefined;
+  const refs = allNames.map(
+    (n) => parseMarketRef(n) ?? (viaMarket && { market: viaMarket, id: n }),
+  );
+  for (const ref of refs.filter(Boolean)) {
+    try {
+      await installFromMarket(p, cfg, ref, { force, yes });
+    } catch (e) {
+      console.error(`✗ ${ref.market}:${ref.id}: ${e.message}`);
+      process.exitCode = 1;
+    }
+  }
+  const names = allNames.filter((_, i) => !refs[i]);
+  if (!names.length) return;
+
+  const specs = repoSpecs(cfg.manifest);
+  const source = from && findRepo(specs, from);
+  if (from && !source) {
+    throw new Error(`${from} is not in the repo pool. Run: spm repo add ${from}`);
+  }
+  const pool = await loadPool(source ? [source] : specs);
+  const available = [...pool.keys()].sort();
+  await fs.mkdir(p.skillsDir, { recursive: true });
+
+  for (const name of names) {
+    const candidates = pool.get(name);
+    const found = pickCandidate(candidates, source);
+    if (!found) {
+      console.error(
+        `✗ ${name}: not found in ${source ?? specs.join(", ")}${suggest(name, available)}`,
+      );
+      process.exitCode = 1;
+      continue;
+    }
+    if (!source && candidates.length > 1) {
+      const others = candidates
+        .slice(1)
+        .map((c) => c.repo)
+        .join(", ");
+      console.error(`! ${name}: also in ${others}; using ${found.repo} (--from to choose)`);
+    }
+    const dest = path.join(p.skillsDir, name);
+    if ((await exists(dest)) && !force) {
+      console.log(`• ${name}: already installed (use --force to overwrite)`);
+      continue;
+    }
+    await copySkill(found.src, dest);
+    console.log(`✓ ${name}`);
+  }
 }
 
 async function uninstall(names) {
@@ -454,6 +521,11 @@ export async function run(argv) {
   const force = flags.has("-f") || flags.has("--force");
   const yes = flags.has("-y") || flags.has("--yes");
   const latest = flags.has("--latest");
+  const global = flags.has("-g") || flags.has("--global");
+
+  if (global && !["install", "i", "add"].includes(cmd)) {
+    throw new Error("-g only works with install");
+  }
 
   if (flags.has("-v") || flags.has("--version")) return console.log(await version());
 
@@ -476,7 +548,9 @@ export async function run(argv) {
     case "install":
     case "i":
     case "add":
-      return install(rest, { force, from, yes });
+      return global
+        ? installGlobal(rest, { force, from, yes })
+        : install(rest, { force, from, yes });
     case "uninstall":
     case "remove":
     case "rm":

@@ -66,6 +66,31 @@ describe("spm cli", () => {
     expect((await spm("list")).stdout).toContain("No skills installed");
   });
 
+  it("installs globally with -g without recording anything", async () => {
+    await spm("init", repoDir);
+    await spm("install", "-g", "demo");
+    await fs.access(path.join(globalDir, "demo", "SKILL.md"));
+    await expect(fs.access(path.join(project, ".claude", "skills", "demo"))).rejects.toThrow();
+    const manifest = JSON.parse(await fs.readFile(path.join(project, "spm.json"), "utf8"));
+    expect(manifest.skills).toEqual({});
+  });
+
+  it("skips an existing global skill unless --force", async () => {
+    await spm("init", repoDir);
+    await spm("install", "-g", "demo");
+    await fs.writeFile(path.join(globalDir, "demo", "SKILL.md"), "edited");
+    expect((await spm("install", "-g", "demo")).stdout).toContain("already installed");
+    expect(await fs.readFile(path.join(globalDir, "demo", "SKILL.md"), "utf8")).toBe("edited");
+    await spm("install", "-g", "demo", "--force");
+    expect(await fs.readFile(path.join(globalDir, "demo", "SKILL.md"), "utf8")).toContain("A demo");
+  });
+
+  it("rejects bare -g install and -g on other commands", async () => {
+    await spm("init", repoDir);
+    await expect(spm("install", "-g")).rejects.toThrow(/usage: spm install -g/);
+    await expect(spm("list", "-g")).rejects.toThrow(/-g only works with install/);
+  });
+
   it("records skills in spm.json at the project root and hashes inside .claude", async () => {
     await spm("init", repoDir);
     await spm("install", "demo");
