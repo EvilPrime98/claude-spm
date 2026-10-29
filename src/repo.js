@@ -70,6 +70,9 @@ async function run(args, cwd) {
 
 const isSha = (ref) => /^[0-9a-f]{40}$/i.test(ref ?? "");
 
+// Specs sharing a clone (same repo and ref, different subdir) must not clone concurrently.
+const locks = new Map();
+
 /**
  * Clones the repository into the cache, or updates the cached clone, and returns the directory to scan for skills.
  *
@@ -84,6 +87,16 @@ const isSha = (ref) => /^[0-9a-f]{40}$/i.test(ref ?? "");
 export async function fetchRepo(spec) {
   const repo = parseRepo(spec);
   const dir = cachePath(repo);
+  const previous = locks.get(dir) ?? Promise.resolve();
+  const current = previous.then(() => fetchInto(repo, dir, spec));
+  locks.set(
+    dir,
+    current.catch(() => {}),
+  );
+  return current;
+}
+
+async function fetchInto(repo, dir, spec) {
   const pinned = isSha(repo.ref);
   if (await exists(path.join(dir, ".git"))) {
     try {

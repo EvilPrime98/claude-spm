@@ -87,6 +87,19 @@ describe("fetchRepo", () => {
     expect(await fs.readFile(path.join(dir, "pkg", "f.txt"), "utf8")).toBe("two");
   });
 
+  it("serializes concurrent fetches that share a clone", async () => {
+    const [first, second] = await Promise.all([fetchRepo(src), fetchRepo(src)]);
+    expect(second).toEqual(first);
+    expect(await fs.readFile(path.join(second.root, "pkg", "f.txt"), "utf8")).toBe("one");
+  });
+
+  it("keeps serving later fetches after one fails", async () => {
+    const bad = fetchRepo(path.join(root, "absent"));
+    const good = fetchRepo(src);
+    await expect(bad).rejects.toThrow(/git clone failed/);
+    await expect(good).resolves.toHaveProperty("sha");
+  });
+
   it("falls back to the cached copy when the origin disappears", async () => {
     await fetchRepo(src);
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
