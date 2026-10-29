@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/EvilPrime98/claude-spm/compare/v0.8.0...v0.9.0) (2026-10-29)
+
+
+### Features
+
+* **doctor:** add spm doctor to report skill context cost ([3675305](https://github.com/EvilPrime98/claude-spm/commit/3675305d6fe8ac12020820a795528963768a670b))
+* **doctor:** add spm doctor to report skill context cost ([330bd60](https://github.com/EvilPrime98/claude-spm/commit/330bd602577dd12d94a8d0994411bd6e9b845755))
+
 ## [0.8.0](https://github.com/EvilPrime98/claude-spm/compare/v0.7.1...v0.8.0) (2026-10-28)
 
 
