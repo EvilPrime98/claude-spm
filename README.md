@@ -64,8 +64,13 @@ spm list                 # show skills installed in this project
 | `spm list`                     | Skills installed in this project (alias: `ls`)                               |
 | `spm available [filter]`       | Skills available in the pool                                                 |
 | `spm search <term>`            | Search the skill markets (`--market <id>` to pick one)                       |
+| `spm doctor`                   | Report what the visible skills cost in context, offer to remove unused ones  |
 
-Options: `-f, --force` overwrite an existing local skill; `--from <repo>` with `install` takes the skills from that repo of the pool (or from a market id); `-y, --yes` skips the review prompt of market installs; `--latest` with `update` moves market skills to the newest commit; `-g, --global` with `install` copies skills into the global folder; `--no-isolate` with `init` keeps global skills visible; `-v, --version` print the spm version; `-h, --help`.
+Options: `-f, --force` overwrite an existing local skill; `--from <repo>` with `install` takes the skills from that repo of the pool (or from a market id); `-y, --yes` skips the review prompt of market installs (with `doctor`, removes every flagged skill without asking); `--latest` with `update` moves market skills to the newest commit; `-g, --global` with `install` copies skills into the global folder; `--no-isolate` with `init` keeps global skills visible; `--days <n>` with `doctor` sets the usage window (default 60); `--json` with `doctor` prints the report and changes nothing; `-v, --version` print the spm version; `-h, --help`.
+
+## Context cost
+
+`spm doctor` lists every skill Claude can see in the project (spm-managed, hand-written and global ones not turned off) with the tokens its description always costs and the tokens its body costs when it triggers. Counts are estimates (chars/4). Uses come from your local Claude Code transcripts for this project, read-only and never uploaded. A skill is flagged when it was not used in the window, or when its description overlaps a more used skill. In a terminal, `doctor` then asks whether to remove each flagged skill: project skills are uninstalled, global ones are turned off for this project. Without a terminal and without `--yes` it only prints the report.
 
 `spm.json` looks like this:
 

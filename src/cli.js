@@ -3,6 +3,7 @@ import path from "node:path";
 import { globalSkillsDir, projectPaths } from "./paths.js";
 import { getMarket, markets, parseMarketRef } from "./markets/index.js";
 import { entrySpec, loadPool, pickCandidate, repoKey, repoSpecs } from "./repo.js";
+import { buildReport, disableGlobal, formatReport, readOverrides, usageCounts } from "./doctor.js";
 import { confirm, formatReview, inspectSkill } from "./review.js";
 import {
   listSkills,
@@ -37,6 +38,8 @@ Usage:
   spm list                      skills installed in this project (alias: ls)
   spm available [filter]        skills available in the pool
   spm search <term>             search the skill markets (${Object.keys(markets).join(", ")})
+  spm doctor                    report what the skills Claude sees cost in context, then offer to
+                                remove the unused or overlapping ones
 
 Options:
   -f, --force      overwrite a skill that already exists locally
@@ -45,7 +48,10 @@ Options:
   --latest         with update: move market skills to the newest commit (asks to review it)
   -g, --global     with install: copy the skills into the global skills folder (no spm.json,
                    nothing recorded; spm-isolated projects still hide them)
-  -y, --yes        skip the review confirmation of market installs and updates
+  -y, --yes        skip the review confirmation of market installs and updates; with doctor,
+                   remove every flagged skill without asking
+  --days <n>       with doctor: usage window in days (default 60)
+  --json           with doctor: print the report as JSON and change nothing
   --no-isolate     with init: don't hide global skills (and stop doing so if previously on)
   -h, --help       show this help
   -v, --version    print the spm version
@@ -316,6 +322,47 @@ async function uninstall(names) {
   await save(p, cfg);
 }
 
+/**
+ * Reports the context cost of every skill Claude sees here, then offers to prune the flagged ones.
+ *
+ * Project skills are removed like `spm uninstall`; global skills are turned off for this project.
+ * Without a terminal and without `--yes` the report is printed and nothing is asked.
+ */
+async function doctor({ days, json, yes }) {
+  const p = projectPaths();
+  const { manifest } = await load(p);
+  const { counts, files } = await usageCounts(process.cwd(), { days });
+  const report = await buildReport({
+    manifest,
+    skillsDir: p.skillsDir,
+    globalDir: globalSkillsDir(),
+    overrides: await readOverrides(p.settings),
+    counts,
+    hasUsage: files > 0,
+  });
+  if (json) return console.log(JSON.stringify({ days, transcripts: files, ...report }, null, 2));
+  console.log(formatReport(report, { days, files }));
+
+  const flagged = report.skills.filter((s) => s.flagged);
+  if (!flagged.length || (!yes && !process.stdin.isTTY)) return;
+  const chosen = [];
+  console.log("");
+  for (const s of flagged) {
+    const action = s.source === "global" ? "turn off for this project" : "remove";
+    if (yes || (await confirm(`${s.name} (${s.reasons.join(", ")}): ${action}?`))) chosen.push(s);
+  }
+  const globals = chosen.filter((s) => s.source === "global");
+  const projectNames = chosen.filter((s) => s.source !== "global").map((s) => s.name);
+  if (projectNames.length) await uninstall(projectNames);
+  if (globals.length) {
+    await disableGlobal(
+      p.settings,
+      globals.flatMap((s) => [...s.names]),
+    );
+    console.log(`✓ turned off ${globals.map((s) => s.name).join(", ")}`);
+  }
+}
+
 async function update(names, { latest, yes }) {
   const p = projectPaths();
   const cfg = await load(p);
@@ -504,7 +551,7 @@ async function version() {
 /**
  * Runs the spm CLI.
  *
- * Flags (`-f`/`--force`, `-y`/`--yes`, `--latest`, `-v`/`--version`, `-h`/`--help`, `--no-isolate`, `--from <repo|market>`, `--market <id>`) may appear anywhere; the first non-flag argument is the command.
+ * Flags (`-f`/`--force`, `-y`/`--yes`, `--latest`, `-v`/`--version`, `-h`/`--help`, `--no-isolate`, `--json`, `--days <n>`, `--from <repo|market>`, `--market <id>`) may appear anywhere; the first non-flag argument is the command.
  *
  * @param {string[]} argv Command-line arguments, without the node and script paths.
  * @returns {Promise<void>}
@@ -514,8 +561,11 @@ export async function run(argv) {
   const { args, values } = takeOptions(argv, {
     "--from": "a repo or market id",
     "--market": "a market id",
+    "--days": "a number of days",
   });
   const { from, market } = values;
+  const days = values.days === undefined ? 60 : Number(values.days);
+  if (!Number.isFinite(days) || days <= 0) throw new Error("--days needs a positive number");
   const flags = new Set(args.filter((a) => a.startsWith("-")));
   const [cmd, ...rest] = args.filter((a) => !a.startsWith("-"));
   const force = flags.has("-f") || flags.has("--force");
@@ -566,6 +616,8 @@ export async function run(argv) {
       return repo(rest, { force });
     case "available":
       return available(rest[0]);
+    case "doctor":
+      return doctor({ days, json: flags.has("--json"), yes });
     case "search":
       return search(rest.join(" "), { market });
     default:
